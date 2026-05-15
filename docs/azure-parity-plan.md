@@ -33,10 +33,36 @@ Standalone OS1 project boundary created:
   - `lifecycle=active`
   - `managed_by=manual-azure-cli`
 
-No VM or other billable Azure compute was provisioned in this step. The group is ready to own future OS1 Azure resources once VM size, networking, SSH user/key, and helper-vs-SSH strategy are confirmed.
+Standalone OS1 VM created:
+
+- VM: `os1-hermes-dev`
+- Resource group: `os1-project-rg`
+- Region: `westus2`
+- Size: `Standard_D4s_v5`
+- Image: `Ubuntu2204`
+- OS disk: 50 GB `Premium_LRS`
+- Admin user: `hermes`
+- Private IP: `10.0.0.4`
+- Public IP: `20.115.128.223`
+- SSH key: local `~/.ssh/id_ed25519.pub`
+- Network security group: `os1-hermes-devNSG`
+- SSH rule: `AllowSSHFromMosesMac`, TCP 22 from `72.24.145.11/32`
+- Hermes Agent: installed under `/home/hermes/.hermes/hermes-agent`
+- Hermes CLI: `/home/hermes/.local/bin/hermes`
+- Verified version: `Hermes Agent v0.13.0 (2026.5.7)`
+- Bootstrap log on VM: `/home/hermes/.hermes/logs/os1-bootstrap.log`
+
+The first `Standard_D4s_v5` attempts in `centralus` and `eastus` were rejected by Azure capacity restrictions. `Standard_D4ls_v5` and `Standard_B4ms` were also capacity-blocked in `centralus`, so the VM resources were created in `westus2` while staying under the standalone `os1-project-rg` ownership boundary.
 
 Running VMs found:
 
+- `os1-hermes-dev`
+  - Resource group: `os1-project-rg`
+  - Region: `westus2`
+  - Size: `Standard_D4s_v5`
+  - Private IP: `10.0.0.4`
+  - Public IP: `20.115.128.223`
+  - Hermes Agent: installed and verified
 - `openclaw-gateway-vm`
   - Resource group: `OPENCLAW-RG`
   - Region: `eastus`
@@ -50,7 +76,7 @@ Running VMs found:
   - Private IP: `10.0.0.4`
   - Public IP: `20.230.203.79`
 
-I did not create, modify, or delete Azure resources.
+Azure resources created for this project are isolated in `os1-project-rg`. Existing non-OS1 resource groups were inspected but not modified.
 
 ## Closest Immediate Match: Azure VM Over SSH
 
@@ -83,6 +109,7 @@ This gives the main product workflow immediately. It does not duplicate Orgo's i
 
 Use existing Azure VMs as OS1 hosts:
 
+- `os1-hermes-dev` is the dedicated OS1 duplicate VM and should be the default smoke target.
 - `dev-workspace-vm` is a good candidate for a development workspace because its name matches the OS1 use case.
 - `openclaw-gateway-vm` looks more production/gateway-like and should be treated carefully unless the user explicitly wants OS1/Hermes on it.
 
@@ -93,7 +120,7 @@ Requirements:
 - Hermes Agent installed.
 - Optional: a dedicated Linux user such as `hermes` or `os1`.
 
-This should be the first live test because it exercises the app without changing cloud code.
+The dedicated `os1-hermes-dev` VM now satisfies the immediate SSH transport path without requiring app source changes.
 
 ### Phase 2: Add Azure As A First-Class Transport
 
@@ -186,6 +213,8 @@ az vm create \
 
 Do not run this until the region, VM name, size, networking, SSH username/key, and cost expectations are confirmed.
 
+Provisioning has now been completed for `os1-hermes-dev`. The starter command remains here only as the reproducible baseline for future rebuilds.
+
 ## Swift Implementation Sketch
 
 Immediate SSH-backed Azure profile:
@@ -201,18 +230,24 @@ Later helper-backed Azure profile:
 - `AzureTransport` implements `RemoteTransport`.
 - `AzureTerminalDriver` streams websocket frames if a helper is installed.
 
-## Open Questions Before Provisioning
+## Remaining Open Questions
 
-- Should the OS1 VM be created inside the new `os1-project-rg`, or should the first smoke test reuse `dev-workspace-vm` before provisioning new compute?
-- Should we reuse `dev-workspace-vm` or create a fresh `os1-hermes-*` VM?
-- Is inbound SSH from this Mac already allowed?
-- What SSH username/key should OS1 use?
 - Should this be dev-only or production-style with Key Vault, managed identity, Log Analytics, and tighter NSG rules?
 - Should the app remain branded `OS1`, or should bundle ID/name be changed for the new repo?
+- Should we keep the current SSH-only Azure parity path, or add a first-class Azure transport and optional VM helper for closer Orgo parity?
+- Should the current SSH allow rule stay pinned to `72.24.145.11/32`, or should it be updated dynamically when this Mac changes networks?
 
 ## Practical Next Step
 
-Use `dev-workspace-vm` as the first smoke target if SSH access is available. Install Hermes Agent, add it as an SSH host in OS1, and verify:
+Use `os1-hermes-dev` as the first smoke target. Add it as an SSH host in OS1:
+
+- Alias: `OS1 Hermes Dev`
+- Host: `20.115.128.223`
+- User: `hermes`
+- SSH key: `~/.ssh/id_ed25519`
+- Hermes profile/home: default `~/.hermes`
+
+Then verify:
 
 - Overview discovery,
 - Sessions list,
