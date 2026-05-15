@@ -246,10 +246,41 @@ fi
 
 python3 - <<'PY'
 import pathlib
+import json
 import sys
 
 config = pathlib.Path.home() / ".hermes" / "config.yaml"
+env = pathlib.Path.home() / ".hermes" / ".env"
+state = pathlib.Path.home() / ".hermes" / "gateway_state.json"
 print(f"config_exists={str(config.exists()).lower()}")
+print(f"env_exists={str(env.exists()).lower()}")
+
+env_values = {}
+if env.exists():
+    for line in env.read_text(errors="ignore").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, _, value = stripped.partition("=")
+        env_values[key.strip()] = value.strip().strip("\"'")
+
+print("telegram_bot_token=" + ("set" if env_values.get("TELEGRAM_BOT_TOKEN") else "missing"))
+print("telegram_allowed_users=" + ("set" if env_values.get("TELEGRAM_ALLOWED_USERS") else "missing"))
+print(f"gateway_state_exists={str(state.exists()).lower()}")
+if state.exists():
+    try:
+        loaded_state = json.loads(state.read_text(errors="ignore") or "{}")
+        platforms = loaded_state.get("platforms") if isinstance(loaded_state, dict) else None
+        telegram = platforms.get("telegram") if isinstance(platforms, dict) else None
+        if isinstance(telegram, dict):
+            print("telegram_platform_state=" + str(telegram.get("state", "missing")))
+            error_code = telegram.get("error_code")
+            print("telegram_error_code=" + (str(error_code) if error_code else "missing"))
+            print("telegram_error_message=" + ("set" if telegram.get("error_message") else "missing"))
+        else:
+            print("telegram_platform_state=missing")
+    except Exception as exc:
+        print(f"gateway_state_parse=failed:{exc.__class__.__name__}")
 
 try:
     import yaml

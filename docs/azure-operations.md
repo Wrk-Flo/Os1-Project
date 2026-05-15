@@ -112,6 +112,7 @@ Defaults:
 
 - OpenAI key: `wrkflo-kv/openai-api-key`
 - Composio key: `wrkflo-kv/composio-api-key`
+- Telegram bot token: Azure Container App secret `wrkflo/wrkflo-orchestrator/telegram-bot-token`
 - Target host: `os1-hermes-dev`
 - Active model after sync: `gpt-5.4-mini`
 
@@ -123,14 +124,16 @@ scripts/azure/sync-os1-secrets.py \
   --composio-secret COMPOSIO-API-KEY
 ```
 
-The sync helper does not print secret values. It reports only redacted status, writes `OPENAI_API_KEY` to `~/.hermes/.env`, registers the `openai` provider in `~/.hermes/config.yaml`, sets `auth.json.active_provider=openai`, and writes `mcp_servers.composio`.
+The sync helper does not print secret values. It reports only redacted status, writes `OPENAI_API_KEY` and `TELEGRAM_BOT_TOKEN` to `~/.hermes/.env`, registers the `openai` provider in `~/.hermes/config.yaml`, sets `auth.json.active_provider=openai`, and writes `mcp_servers.composio`.
 
 Current credential state observed from Azure:
 
 - `wrkflo-kv/openai-api-key`: available and installed on the VM.
 - `wrkflo-kv/composio-api-key`: available, but Composio MCP rejected it with `401 Unauthorized`.
 - `gs-quantum-kv/COMPOSIO-API-KEY`: available, but Composio MCP also rejected it with `401 Unauthorized`.
-- AgentMail, Telegram, and Orgo keys were not found in the accessible Key Vault inventory during this pass.
+- `wrkflo/wrkflo-orchestrator/telegram-bot-token`: available as a Container App secret and validated with Telegram `getMe`.
+- OpenClaw VM `/opt/global-sentinel/.env`: also has Telegram token/chat fields set; the default token validated as the same bot. OpenClaw has Telegram polling disabled, and the bot had no webhook during validation.
+- AgentMail and Orgo keys were not found in the accessible Key Vault inventory during this pass.
 - Azure OpenAI keys and deployments exist, but OS1's provider catalog does not currently model Azure OpenAI deployment/API-version semantics, so those were not installed as an OS1 provider.
 
 After any Composio key update, validate it on the VM:
@@ -140,6 +143,44 @@ ssh os1-hermes-dev 'hermes mcp test composio'
 ```
 
 The command masks the key fragment in output. Treat `401 Unauthorized` as a stale or wrong Composio Connect API key.
+
+After any Telegram token update, validate it without printing the token:
+
+```sh
+ssh os1-hermes-dev 'python3 - <<'"'"'PY'"'"'
+import json
+import pathlib
+import urllib.request
+
+env = {}
+path = pathlib.Path.home() / ".hermes" / ".env"
+for line in path.read_text(errors="ignore").splitlines() if path.exists() else []:
+    if line.strip() and not line.strip().startswith("#") and "=" in line:
+        key, _, value = line.partition("=")
+        env[key.strip()] = value.strip().strip("\"'")
+
+token = env.get("TELEGRAM_BOT_TOKEN")
+print("telegram_bot_token=" + ("set" if token else "missing"))
+if token:
+    result = json.loads(urllib.request.urlopen(f"https://api.telegram.org/bot{token}/getMe", timeout=15).read().decode())
+    print("telegram_getMe=" + ("ok" if result.get("ok") else "failed"))
+PY'
+```
+
+Start or restart the Hermes gateway after syncing Telegram:
+
+```sh
+ssh os1-hermes-dev 'hermes gateway install && hermes gateway start'
+scripts/azure/os1-vm.sh tools-status
+```
+
+Current OS1 VM Telegram state:
+
+- `TELEGRAM_BOT_TOKEN`: installed on `os1-hermes-dev`.
+- Telegram `getMe`: validated as the `mo2darkbot` bot.
+- `hermes-gateway.service`: installed as a user systemd service, active, and linger-enabled so it survives SSH logout.
+- Gateway state: Telegram platform connected.
+- `TELEGRAM_ALLOWED_USERS`: not set. Users should pair by DM from OS1/Hermes, or add a numeric allowlist if a locked-down direct allowlist is required.
 
 ## Tool And MCP Integration
 

@@ -20,6 +20,9 @@ DEFAULT_VAULT = "wrkflo-kv"
 DEFAULT_HOST = "os1-hermes-dev"
 DEFAULT_OPENAI_SECRET = "openai-api-key"
 DEFAULT_COMPOSIO_SECRET = "composio-api-key"
+DEFAULT_TELEGRAM_RESOURCE_GROUP = "wrkflo"
+DEFAULT_TELEGRAM_CONTAINER_APP = "wrkflo-orchestrator"
+DEFAULT_TELEGRAM_SECRET = "telegram-bot-token"
 
 
 @dataclass(frozen=True)
@@ -42,6 +45,8 @@ payload = json.load(sys.stdin)
 
 openai_key = base64.b64decode(payload["openai_api_key_b64"]).decode()
 composio_key = base64.b64decode(payload["composio_api_key_b64"]).decode()
+telegram_token_b64 = payload.get("telegram_bot_token_b64") or ""
+telegram_token = base64.b64decode(telegram_token_b64).decode() if telegram_token_b64 else ""
 activate_model = payload.get("activate_model") or "gpt-5.4-mini"
 
 home = pathlib.Path.home()
@@ -89,6 +94,9 @@ def upsert_env(lines, key, value):
 
 lines = read_env()
 openai_changed = upsert_env(lines, "OPENAI_API_KEY", openai_key)
+telegram_changed = False
+if telegram_token:
+    telegram_changed = upsert_env(lines, "TELEGRAM_BOT_TOKEN", telegram_token)
 env_path.write_text("\n".join(lines) + "\n")
 os.chmod(env_path, 0o600)
 
@@ -160,9 +168,11 @@ print(json.dumps({
     "openai_provider": "set",
     "active_model": activate_model,
     "composio_mcp": "set",
+    "telegram_env": "set" if telegram_token else "skipped",
     "backups": "set",
     "changed": {
         "openai_env": bool(openai_changed),
+        "telegram_env": bool(telegram_changed),
         "openai_provider": bool(provider_changed),
         "composio_mcp": previous_composio != target_composio,
     },
@@ -209,6 +219,36 @@ def fetch_secret(ref: SecretRef) -> str:
     raise RuntimeError(f"{ref.label}=missing ({last_error})")
 
 
+def fetch_containerapp_secret(resource_group: str, app_name: str, secret_name: str) -> str:
+    last_error = ""
+    for attempt in range(1, 4):
+        result = run([
+            "az",
+            "containerapp",
+            "secret",
+            "show",
+            "--resource-group",
+            resource_group,
+            "--name",
+            app_name,
+            "--secret-name",
+            secret_name,
+            "--query",
+            "value",
+            "-o",
+            "tsv",
+        ])
+        value = result.stdout.rstrip("\n")
+        if result.returncode == 0 and value:
+            return value
+        detail = result.stderr.strip().splitlines()[:2]
+        last_error = "; ".join(detail) or "empty secret response"
+        if attempt < 3:
+            time.sleep(2 * attempt)
+
+    raise RuntimeError(f"telegram_bot_token=missing ({last_error})")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Sync OS1 VM credentials from Azure Key Vault.")
     parser.add_argument("--vault", default=DEFAULT_VAULT)
@@ -217,6 +257,10 @@ def main() -> int:
     parser.add_argument("--host", default=DEFAULT_HOST)
     parser.add_argument("--openai-secret", default=DEFAULT_OPENAI_SECRET)
     parser.add_argument("--composio-secret", default=DEFAULT_COMPOSIO_SECRET)
+    parser.add_argument("--telegram-resource-group", default=DEFAULT_TELEGRAM_RESOURCE_GROUP)
+    parser.add_argument("--telegram-container-app", default=DEFAULT_TELEGRAM_CONTAINER_APP)
+    parser.add_argument("--telegram-secret", default=DEFAULT_TELEGRAM_SECRET)
+    parser.add_argument("--skip-telegram", action="store_true")
     parser.add_argument("--activate-model", default="gpt-5.4-mini")
     parser.add_argument("--dry-run", action="store_true", help="Check secret availability without writing to the VM.")
     args = parser.parse_args()
@@ -228,12 +272,19 @@ def main() -> int:
 
     try:
         secrets = {ref.label: fetch_secret(ref) for ref in refs}
+        if not args.skip_telegram:
+            secrets["telegram_bot_token"] = fetch_containerapp_secret(
+                args.telegram_resource_group,
+                args.telegram_container_app,
+                args.telegram_secret,
+            )
     except RuntimeError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
     print("openai_api_key=set")
     print("composio_api_key=set")
+    print(f"telegram_bot_token={'skipped' if args.skip_telegram else 'set'}")
     if args.dry_run:
         print("dry_run=true")
         print("vm_write=skipped")
@@ -242,6 +293,7 @@ def main() -> int:
     payload = {
         "openai_api_key_b64": base64.b64encode(secrets["openai_api_key"].encode()).decode(),
         "composio_api_key_b64": base64.b64encode(secrets["composio_api_key"].encode()).decode(),
+        "telegram_bot_token_b64": base64.b64encode(secrets.get("telegram_bot_token", "").encode()).decode(),
         "activate_model": args.activate_model,
     }
     remote_code = REMOTE_SCRIPT.replace(
@@ -262,7 +314,7 @@ def main() -> int:
         print("error: vm_write returned invalid status", file=sys.stderr)
         return 1
 
-    for key in ("openai_env", "openai_provider", "active_model", "composio_mcp", "backups"):
+    for key in ("openai_env", "openai_provider", "active_model", "composio_mcp", "telegram_env", "backups"):
         print(f"{key}={result.get(key, 'missing')}")
     print("vm_write=set")
     return 0 if result.get("success") else 1
