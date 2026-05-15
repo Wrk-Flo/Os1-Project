@@ -20,6 +20,21 @@ Azure CLI is authenticated to:
 - Subscription: `Azure subscription 1`
 - Subscription ID: `7091c86a-9dec-49e9-9e11-f26f96c9db66`
 
+Standalone OS1 project boundary created:
+
+- Resource group: `os1-project-rg`
+- Region: `centralus`
+- Purpose: isolated Azure boundary for this OS1 duplicate and future Azure parity work
+- Tags:
+  - `project=os1-project`
+  - `repo=Wrk-Flo/Os1-Project`
+  - `owner=moses`
+  - `environment=dev`
+  - `lifecycle=active`
+  - `managed_by=manual-azure-cli`
+
+No VM or other billable Azure compute was provisioned in this step. The group is ready to own future OS1 Azure resources once VM size, networking, SSH user/key, and helper-vs-SSH strategy are confirmed.
+
 Running VMs found:
 
 - `openclaw-gateway-vm`
@@ -159,7 +174,7 @@ Possible starter command, after target values are confirmed:
 
 ```sh
 az vm create \
-  --resource-group DEV-WS-WESTUS2 \
+  --resource-group os1-project-rg \
   --name os1-hermes-dev \
   --image Ubuntu2204 \
   --size Standard_D4s_v5 \
@@ -169,7 +184,7 @@ az vm create \
   --public-ip-sku Standard
 ```
 
-Do not run this until the resource group, region, VM name, size, networking, and cost expectations are confirmed.
+Do not run this until the region, VM name, size, networking, SSH username/key, and cost expectations are confirmed.
 
 ## Swift Implementation Sketch
 
@@ -188,7 +203,7 @@ Later helper-backed Azure profile:
 
 ## Open Questions Before Provisioning
 
-- Which Azure resource group should own the OS1 VM: `dev-ws-westus2`, `wrkflo`, `wrkflo-rg`, or a new resource group?
+- Should the OS1 VM be created inside the new `os1-project-rg`, or should the first smoke test reuse `dev-workspace-vm` before provisioning new compute?
 - Should we reuse `dev-workspace-vm` or create a fresh `os1-hermes-*` VM?
 - Is inbound SSH from this Mac already allowed?
 - What SSH username/key should OS1 use?

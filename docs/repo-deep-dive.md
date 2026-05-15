@@ -4,6 +4,10 @@ Snapshot audited: `nickvasilescu/hermes-desktop-os1` at `bea7d24aa03c1834b803903
 
 This local project was populated from that snapshot. The imported source tree matched the upstream checkout byte-for-byte before these `docs/` notes were added.
 
+Current local project path: `/Users/mosestut/Os1 Project`.
+
+Current standalone GitHub repo: `Wrk-Flo/Os1-Project`.
+
 ## Executive Summary
 
 OS1 is a native SwiftUI macOS 14+ app packaged with Swift Package Manager. It presents one workspace for a Hermes Agent running either behind SSH or on an Orgo cloud computer. The app is not Electron and does not have a backend service of its own; it reaches the selected host directly from the Mac app.
