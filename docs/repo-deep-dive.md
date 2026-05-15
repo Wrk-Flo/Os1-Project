@@ -209,12 +209,20 @@ Single static marketing/docs page for GitHub Pages. It is manually deployed by `
 
 ## Build Verification Notes
 
-Local verification hit a toolchain issue before app code compiled:
+The original `PackageDescription` manifest linker failure was fixed on this Mac by disabling stale private SwiftPM ManifestAPI interfaces in Command Line Tools. Current lightweight manifest verification succeeds:
 
 ```text
-error: Invalid manifest
-Undefined symbols for architecture arm64:
-  PackageDescription.Package.__allocating_init(...)
+swift package dump-package
+name: OS1
+targets: 2
 ```
 
-The same failure occurred in the clean upstream clone with `swift package dump-package`, so the imported project is not the cause. The machine currently has only Command Line Tools selected at `/Library/Developer/CommandLineTools`; no full `/Applications/Xcode*.app` installation was found. CI expects macOS 15 with a full toolchain. Installing/selecting a matching Xcode should be the next verification step before treating test/build status as meaningful.
+Full `./scripts/run-tests.sh` is still not a clean signal on this machine. It gets past the old linker error, but SwiftPM can hang while compiling the package manifest through the selected Command Line Tools toolchain:
+
+```text
+swift-test ... --scratch-path .build-tests ...
+swift-driver ... Package.swift ...
+swift-frontend ... Package.swift ...
+```
+
+In the latest bounded check, the manifest compile was still active after roughly two minutes and had to be terminated to release the `.build-tests` lock. No app-code compile/test failure was reached. CI expects macOS 15 with a full Swift toolchain; installing/selecting a matching Xcode should be the next verification step before treating local test/build status as meaningful.
