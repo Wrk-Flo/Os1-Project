@@ -101,6 +101,46 @@ gateway_status:
 
 That is still ready for initial app testing. MCP servers appear after you install connector integrations from OS1, such as Composio or AgentMail.
 
+Sync known Azure Key Vault credentials onto the OS1 VM:
+
+```sh
+scripts/azure/sync-os1-secrets.py --dry-run
+scripts/azure/sync-os1-secrets.py
+```
+
+Defaults:
+
+- OpenAI key: `wrkflo-kv/openai-api-key`
+- Composio key: `wrkflo-kv/composio-api-key`
+- Target host: `os1-hermes-dev`
+- Active model after sync: `gpt-5.4-mini`
+
+Use a different Composio vault/secret when testing candidates:
+
+```sh
+scripts/azure/sync-os1-secrets.py \
+  --composio-vault gs-quantum-kv \
+  --composio-secret COMPOSIO-API-KEY
+```
+
+The sync helper does not print secret values. It reports only redacted status, writes `OPENAI_API_KEY` to `~/.hermes/.env`, registers the `openai` provider in `~/.hermes/config.yaml`, sets `auth.json.active_provider=openai`, and writes `mcp_servers.composio`.
+
+Current credential state observed from Azure:
+
+- `wrkflo-kv/openai-api-key`: available and installed on the VM.
+- `wrkflo-kv/composio-api-key`: available, but Composio MCP rejected it with `401 Unauthorized`.
+- `gs-quantum-kv/COMPOSIO-API-KEY`: available, but Composio MCP also rejected it with `401 Unauthorized`.
+- AgentMail, Telegram, and Orgo keys were not found in the accessible Key Vault inventory during this pass.
+- Azure OpenAI keys and deployments exist, but OS1's provider catalog does not currently model Azure OpenAI deployment/API-version semantics, so those were not installed as an OS1 provider.
+
+After any Composio key update, validate it on the VM:
+
+```sh
+ssh os1-hermes-dev 'hermes mcp test composio'
+```
+
+The command masks the key fragment in output. Treat `401 Unauthorized` as a stale or wrong Composio Connect API key.
+
 ## Tool And MCP Integration
 
 You can start testing OS1 against the Azure VM now. Use this order:
