@@ -6,6 +6,7 @@ This runbook covers the standalone OS1 Azure VM used through the existing SSH tr
 
 - Resource group: `os1-project-rg`
 - VM: `os1-hermes-dev`
+- Network security group: `os1-hermes-devNSG`
 - Default SSH user: `hermes`
 - SSH allowlist rule: `AllowSSHFromMosesMac`
 
@@ -14,6 +15,7 @@ Override these defaults with environment variables when operating another OS1 Az
 ```sh
 OS1_AZURE_RESOURCE_GROUP=my-rg \
 OS1_AZURE_VM_NAME=my-vm \
+OS1_AZURE_NSG_NAME=my-vmNSG \
 OS1_AZURE_SSH_USER=hermes \
 scripts/azure/os1-vm.sh status
 ```
@@ -71,6 +73,48 @@ scripts/azure/os1-vm.sh ssh-smoke
 ```
 
 The smoke test checks SSH batch-mode access, `python3`, and whether the `hermes` CLI is visible. If the public IP changed, refresh the SSH allowlist first.
+
+Check tool and MCP readiness:
+
+```sh
+scripts/azure/os1-vm.sh tools-status
+```
+
+This checks the VM runtime without printing secrets:
+
+- Python and Hermes CLI visibility.
+- Node, npm, and npx availability for MCP servers that run through Node.
+- Whether `~/.hermes/config.yaml` exists.
+- Which MCP server names are configured under `mcp_servers`.
+- Hermes gateway status.
+
+Expected fresh-VM output is roughly:
+
+```text
+node=v22...
+npm=10...
+npx=10...
+mcp_servers=none
+gateway_status:
+✗ Gateway is not running
+```
+
+That is still ready for initial app testing. MCP servers appear after you install connector integrations from OS1, such as Composio or AgentMail.
+
+## Tool And MCP Integration
+
+You can start testing OS1 against the Azure VM now. Use this order:
+
+1. Open OS1 and select `OS1 Hermes Dev`.
+2. Verify Overview, Sessions, Files, and Terminal against the SSH host.
+3. Add a provider key in the Providers tab, then install it onto the VM.
+4. Use Connectors to configure Composio if you want Gmail, Slack, Notion, GitHub, HubSpot, and similar app tools.
+5. Use Mail if you want AgentMail MCP support.
+6. Use Messaging if you want Telegram gateway support.
+
+Do not paste or log provider, Composio, AgentMail, Telegram, Orgo, or OpenAI keys in shell transcripts. OS1 should write them through Keychain/local UI flows and remote `~/.hermes` config/env files.
+
+Current limitation: Azure uses OS1's SSH transport. The voice-mode Orgo MCP bridge remains Orgo-specific in this codebase, so Azure VM tools are available to Hermes through the VM's Hermes config and connector setup, not through the Orgo Realtime voice bridge.
 
 ## OS1 App Verification
 
