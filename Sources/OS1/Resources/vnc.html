@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { background: #1a0d09; overflow: hidden; width: 100%; height: 100%; }
+  #screen { width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+<div id="screen"></div>
+<script type="module">
+  // noVNC's RFB client. Loaded from a CDN with a fallback chain so a stale
+  // CDN doesn't brick the desktop tab. WKWebView allows ESM imports from
+  // https origins by default.
+  const NOVNC_VERSIONS = [
+    'https://cdn.jsdelivr.net/gh/novnc/noVNC@v1.5.0/core/rfb.js',
+    'https://cdn.jsdelivr.net/gh/novnc/noVNC@v1.4.0/core/rfb.js',
+  ];
+
+  // Notify the Swift host of state changes via WKScriptMessageHandler.
+  // Mirrors the iframe postMessage protocol jxspam/orgo-wrapper uses,
+  // but routed through the macOS WebKit bridge instead.
+  function notify(status, error) {
+    try {
+      window.webkit?.messageHandlers?.vncStatus?.postMessage({
+        status,
+        error: error || null,
+      });
+    } catch (e) {
+      console.warn('vncStatus bridge unavailable:', e);
+    }
+  }
+
+  async function loadRFB() {
+    let lastError = null;
+    for (const url of NOVNC_VERSIONS) {
+      try {
+        const mod = await import(url);
+        return mod.default;
+      } catch (err) {
+        lastError = err;
+      }
+    }
+    throw new Error('Failed to load noVNC: ' + (lastError?.message || 'unknown'));
+  }
+
+  let currentRfb = null;
+  let rfbPromise = null;
+
+  async function disconnectCurrent() {
+    if (currentRfb) {
+      try { currentRfb.disconnect(); } catch (_) {}
+      currentRfb = null;
+    }
+  }
+
+  async function connectVnc(wsUrl, password) {
+    await disconnectCurrent();
+
+    const container = document.getElementById('screen');
+    container.innerHTML = '';
+
+    if (!wsUrl) {
+      notify('error', 'No WebSocket URL');
+      return;
+    }
+
+    notify('connecting');
+
+    try {
+      if (!rfbPromise) rfbPromise = loadRFB();
+      const RFB = await rfbPromise;
+
+      const rfb = new RFB(container, wsUrl, {
+        credentials: { password: password || '' },
+      });
+
+      // Scale the remote framebuffer to the available area; don't ask the
+      // server to resize because that triggers a heavyweight reconfigure
+      // every time the window changes size.
+      rfb.scaleViewport = true;
+      rfb.resizeSession = false;
+      rfb.clipViewport = false;
+      rfb.qualityLevel = 6;
+      rfb.compressionLevel = 2;
+      rfb.showDotCursor = true;
+
+      rfb.addEventListener('connect', () => notify('connected'));
+      rfb.addEventListener('disconnect', (e) => {
+        currentRfb = null;
+        const clean = e?.detail?.clean === true;
+        notify('disconnected', clean ? null : 'Connection lost');
+      });
+      rfb.addEventListener('securityfailure', (e) => {
+        currentRfb = null;
+        const reason = e?.detail?.reason || 'Authentication failed';
+        notify('error', reason);
+      });
+
+      currentRfb = rfb;
+    } catch (err) {
+      currentRfb = null;
+      notify('error', err?.message || 'VNC connection failed');
+    }
+  }
+
+  // Public surface called by Swift via webView.evaluateJavaScript.
+  window.vncBridge = {
+    connect: connectVnc,
+    disconnect: disconnectCurrent,
+  };
+
+  // Initial handshake — Swift waits for didFinish before calling connect,
+  // so just signal ready state here.
+  notify('loading');
+</script>
+</body>
+</html>

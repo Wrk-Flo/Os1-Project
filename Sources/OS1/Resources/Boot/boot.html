@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OS1 Boot</title>
+    <link rel="stylesheet" href="boot.css" />
+  </head>
+  <body>
+    <div class="os1-shell">
+      <div class="os1-viewport">
+        <div class="os1-viewport-content">
+          <canvas id="infinity-canvas" class="viewport-canvas"></canvas>
+          <div id="ui-layer" class="viewport-ui-layer">
+            <div class="brand-lockup" aria-label="Element Software Computer Use">
+              <div class="brand-name">
+                <span class="brand-element">Element</span><span class="brand-software">Software</span><sup>&reg;</sup>
+              </div>
+              <div class="brand-descriptor">
+                <span>OS<sup>1</sup></span><span class="brand-divider"></span><span>Computer Use</span>
+              </div>
+            </div>
+            <div id="tagline" class="tagline-text"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="boot.js"></script>
+  </body>
+</html>

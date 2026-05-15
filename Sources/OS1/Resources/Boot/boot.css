@@ -1,0 +1,250 @@
+/* Verbatim port of OS-1 webapp's shell + StartScene chrome
+   (~/Downloads/OS-1, src/styles/main.css). Cream gradient backdrop,
+   coral viewport at 1.85:1 aspect, dual shelf shadows, and the
+   top-left Element Software brand lockup are byte-for-byte the
+   originals so the boot looks identical to the webapp's title card. */
+
+:root {
+  /* From OS-1 src/styles/main.css */
+  --color-coral-600: #a84832;
+  --color-coral-500: #c1553d;
+  --color-coral-400: #d87660;
+  --color-coral-300: #e6ad86;
+  --bg-cream: #d9c9ad;
+  --bg-beige: #cfc0a6;
+  --coral-viewport: #c65a43;
+
+  --text-primary: rgba(255, 255, 255, 0.95);
+  --text-secondary: rgba(255, 255, 255, 0.7);
+  --text-muted: rgba(255, 255, 255, 0.5);
+
+  --letter-spacing: 0.05em;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  -webkit-font-smoothing: antialiased;
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Helvetica, sans-serif;
+  font-weight: 300;
+  color: var(--text-primary);
+}
+
+body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* OS1 Shell — vertical cream gradient with a brighter band across
+   the middle (mirrors the studio-light look of the original). */
+.os1-shell {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    to bottom,
+    #d4bc9a 0%,
+    #d4bc9a 35%,
+    #e8dcc8 45%,
+    #efe5d5 50%,
+    #e8dcc8 55%,
+    #d4bc9a 65%,
+    #d4bc9a 100%
+  );
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Primary shelf shadow — sells the illusion that the coral viewport
+   is sitting on a warm-cream surface. */
+.os1-shell::before {
+  content: '';
+  position: absolute;
+  top: calc(50% + min(44vw / 1.85, 41vh, 514px));
+  left: calc(50% - min(44vw, calc(41vh * 1.85), 950px) + 60px);
+  width: min(88vw, calc(82vh * 1.85), 1900px);
+  height: 75px;
+  background: linear-gradient(
+    to bottom,
+    rgba(90, 70, 50, 0.5) 0%,
+    rgba(100, 80, 60, 0.25) 40%,
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, black 8%, black 60%, transparent 95%);
+  mask-image: linear-gradient(to right, transparent 0%, black 8%, black 60%, transparent 95%);
+  filter: blur(8px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Secondary softer shadow — adds depth under the primary band. */
+.os1-shell::after {
+  content: '';
+  position: absolute;
+  top: calc(50% + min(44vw / 1.85, 41vh, 514px) + 2px);
+  left: calc(50% - min(44vw, calc(41vh * 1.85), 950px) + 100px);
+  width: min(78vw, calc(72vh * 1.85), 1675px);
+  height: 55px;
+  background: linear-gradient(
+    to bottom,
+    rgba(80, 60, 40, 0.35) 0%,
+    rgba(90, 70, 50, 0.15) 50%,
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, black 10%, black 55%, transparent 90%);
+  mask-image: linear-gradient(to right, transparent 0%, black 10%, black 55%, transparent 90%);
+  filter: blur(12px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.os1-viewport {
+  position: relative;
+  width: min(88vw, calc(82vh * 1.85), 1900px);
+  aspect-ratio: 1.85 / 1;
+  background: var(--coral-viewport);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  z-index: 1;
+}
+
+.os1-viewport-content {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.viewport-canvas {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: block;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.viewport-ui-layer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  pointer-events: none;
+}
+
+/* Brand lockup — top-left, exact port of OS-1 .start-brand-lockup. */
+.brand-lockup {
+  position: absolute;
+  top: 30px;
+  left: 34px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  color: var(--text-primary);
+  text-align: left;
+  opacity: 0;
+  transform: translateY(4px);
+  transition:
+    opacity 0.8s cubic-bezier(0.22, 0.61, 0.36, 1) 0.20s,
+    transform 0.8s cubic-bezier(0.22, 0.61, 0.36, 1) 0.20s;
+}
+
+.brand-lockup.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.brand-name {
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 18px;
+  font-style: italic;
+  line-height: 0.95;
+  white-space: nowrap;
+}
+
+.brand-name .brand-element { font-weight: 800; }
+.brand-name .brand-software { font-weight: 400; }
+.brand-name sup {
+  position: relative;
+  top: -0.35em;
+  margin-left: 1px;
+  font-size: 0.38em;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.brand-descriptor {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: rgba(255, 255, 255, 0.64);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.brand-descriptor sup {
+  position: relative;
+  top: -0.28em;
+  font-size: 0.56em;
+}
+
+.brand-divider {
+  width: 1px;
+  height: 10px;
+  background: rgba(255, 255, 255, 0.34);
+}
+
+/* Tagline — bottom-center inside the viewport. Not in the original
+   StartScene, but kept as a Mac-app boot affordance. Uses the same
+   text-secondary color and DM Sans family as the webapp's
+   .tagline-text. */
+.tagline-text {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 64px;
+  text-align: center;
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: clamp(18px, 2vw, 28px);
+  font-weight: 300;
+  letter-spacing: var(--letter-spacing);
+  color: var(--text-secondary);
+  pointer-events: none;
+}
+
+.tagline-text .char {
+  display: inline-block;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.45s ease, transform 0.45s ease;
+}
+
+.tagline-text .char.revealed {
+  opacity: 1;
+  transform: translateY(0);
+}

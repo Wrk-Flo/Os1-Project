@@ -1,0 +1,27 @@
+name: Feature Request
+description: Suggest a focused improvement.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What workflow is blocked or painful?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What should Hermes Desktop - OS1 Edition do differently?
+    validations:
+      required: true
+  - type: textarea
+    id: security
+    attributes:
+      label: Security Or Permission Impact
+      description: Does this add machine control, account access, shell execution, or new network calls?
+    validations:
+      required: true

@@ -1,0 +1,38 @@
+name: Bug Report
+description: Report a reproducible Hermes Desktop - OS1 Edition issue.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps To Reproduce
+      description: Include exact clicks, commands, connection type, and logs with secrets redacted.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: App version, commit, or release tag.
+    validations:
+      required: true
+  - type: dropdown
+    id: connection
+    attributes:
+      label: Connection Type
+      options:
+        - Orgo VM
+        - SSH
+        - Realtime voice
+        - Other
+    validations:
+      required: true
