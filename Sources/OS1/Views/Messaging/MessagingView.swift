@@ -82,8 +82,8 @@ struct MessagingView: View {
                     discoveredTokenBanner(hostLabel: host)
                 }
 
-                if let connection = appState.activeConnection,
-                   case .found = viewModel.lastScanResult {} else if let connection = appState.activeConnection {
+                if case .found = viewModel.lastScanResult {
+                } else if let connection = appState.activeConnection {
                     detectFromHostPanel(connection: connection)
                 }
 

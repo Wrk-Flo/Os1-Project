@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import OS1
 
+@MainActor
 struct OS1FeatureFlagsTests {
     @Test
     func orgoTransportDefaultsToDisabledWithoutOptIn() throws {

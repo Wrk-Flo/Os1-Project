@@ -145,7 +145,7 @@ final class AgentMailRealtimeService: @unchecked Sendable {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 30_000_000_000)   // 30s
                 if Task.isCancelled { return }
-                task.sendPing { error in
+                task.sendPing { [weak self] error in
                     if let error {
                         self?.handleFailure(reason: "ping failed: \(error.localizedDescription)")
                     }
@@ -246,7 +246,8 @@ final class AgentMailRealtimeService: @unchecked Sendable {
         reconnectTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: delay)
             if Task.isCancelled { return }
-            self?.queue.async {
+            guard let self else { return }
+            self.queue.async { [weak self] in
                 guard let self, !self.isStopped else { return }
                 self.connectLocked()
             }
