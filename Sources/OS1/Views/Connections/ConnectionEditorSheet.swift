@@ -33,6 +33,7 @@ struct ConnectionEditorSheet: View {
     @State private var showCreateComputerForm = false
 
     let isEditing: Bool
+    let isOrgoTransportEnabled: Bool
     let credentialStore: OrgoCredentialStore
     let catalogService: OrgoCatalogService
     let onSave: (ConnectionProfile) -> Void
@@ -40,6 +41,7 @@ struct ConnectionEditorSheet: View {
     init(
         connection: ConnectionProfile,
         isEditing: Bool,
+        isOrgoTransportEnabled: Bool = OS1FeatureFlags.isOrgoTransportEnabled,
         credentialStore: OrgoCredentialStore,
         catalogService: OrgoCatalogService,
         onSave: @escaping (ConnectionProfile) -> Void
@@ -48,6 +50,7 @@ struct ConnectionEditorSheet: View {
         _portText = State(initialValue: connection.sshPort.map(String.init) ?? "")
         _hasAPIKeyOnFile = State(initialValue: credentialStore.hasAPIKey)
         self.isEditing = isEditing
+        self.isOrgoTransportEnabled = isOrgoTransportEnabled
         self.credentialStore = credentialStore
         self.catalogService = catalogService
         self.onSave = onSave
@@ -129,16 +132,42 @@ struct ConnectionEditorSheet: View {
 
     private var transportKindPanel: some View {
         HermesSurfacePanel(
-            title: "Transport",
-            subtitle: "Choose how OS1 reaches the host."
+            title: L10n.string("Transport"),
+            subtitle: transportKindSubtitle
         ) {
             Picker("", selection: transportKindBinding) {
                 Text(L10n.string("SSH")).tag(TransportKind.ssh)
-                Text(L10n.string("Orgo VM")).tag(TransportKind.orgo)
+                if shouldShowOrgoTransport {
+                    Text(L10n.string("Orgo VM")).tag(TransportKind.orgo)
+                }
             }
             .pickerStyle(.segmented)
             .labelsHidden()
         }
+    }
+
+    private var shouldShowOrgoTransport: Bool {
+        Self.shouldShowOrgoTransport(
+            isOrgoTransportEnabled: isOrgoTransportEnabled,
+            draftTransportKind: draft.transport.kind
+        )
+    }
+
+    private var transportKindSubtitle: String {
+        L10n.string(Self.transportKindSubtitleKey(shouldShowOrgoTransport: shouldShowOrgoTransport))
+    }
+
+    static func shouldShowOrgoTransport(
+        isOrgoTransportEnabled: Bool,
+        draftTransportKind: TransportKind
+    ) -> Bool {
+        isOrgoTransportEnabled || draftTransportKind == .orgo
+    }
+
+    static func transportKindSubtitleKey(shouldShowOrgoTransport: Bool) -> String {
+        shouldShowOrgoTransport
+            ? "Use SSH for any host you already control. Orgo VM is optional if you have an Orgo account."
+            : "Use SSH for any host you already control. Orgo VM is hidden unless explicitly enabled."
     }
 
     private var transportKindBinding: Binding<TransportKind> {

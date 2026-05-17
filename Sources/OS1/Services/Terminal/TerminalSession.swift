@@ -14,26 +14,11 @@ final class TerminalSession: ObservableObject, @unchecked Sendable {
 
     init(
         connection: ConnectionProfile,
-        sshTransport: SSHTransport,
-        orgoTransport: OrgoTransport,
-        startupCommandLine: String? = nil
+        driver: any TerminalDriver
     ) {
         self.connection = connection
         self.terminalTitle = "\(connection.label) · \(connection.resolvedHermesProfileName)"
-
-        switch connection.transport {
-        case .ssh:
-            let sshArguments = sshTransport.shellArguments(
-                for: connection,
-                startupCommandLine: startupCommandLine
-            )
-            self.driver = TerminalViewHost(sshArguments: sshArguments)
-        case .orgo(let cfg):
-            self.driver = OrgoTerminalDriver(
-                computerId: cfg.computerId,
-                orgoTransport: orgoTransport
-            )
-        }
+        self.driver = driver
 
         driver.setEventHandlers(
             onProcessStart: { [weak self] in

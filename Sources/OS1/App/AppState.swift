@@ -107,6 +107,9 @@ final class AppState: ObservableObject {
     let orgoCredentialStore: OrgoCredentialStore
     let orgoCatalogService: OrgoCatalogService
     let orgoHermesInstaller: OrgoHermesInstaller
+    let desktopEndpointResolver: any DesktopEndpointResolving
+    let cuaCredentialStore: CuaCredentialStore
+    let computerSessionService: ComputerSessionService
     let hermesUpdater: HermesUpdater
     let transport: any RemoteTransport
     let remoteHermesService: RemoteHermesService
@@ -118,6 +121,7 @@ final class AppState: ObservableObject {
     let knowledgeBaseService: KnowledgeBaseService
     let cronBrowserService: CronBrowserService
     let kanbanBrowserService: KanbanBrowserService
+    let terminalDriverFactory: TerminalDriverFactory
     let terminalWorkspace: TerminalWorkspaceStore
     let agentMailCredentialStore: AgentMailCredentialStore
     let agentMailAccountStore: AgentMailAccountStore
@@ -165,6 +169,16 @@ final class AppState: ObservableObject {
             httpClient: OrgoHTTPClient(apiKeyProvider: orgoApiKeyProvider)
         )
         let orgoHermesInstaller = OrgoHermesInstaller(transport: orgoTransport)
+        let desktopEndpointResolver = OrgoDesktopEndpointResolver(orgoTransport: orgoTransport)
+        let cuaCredentialStore = CuaCredentialStore()
+        let computerSessionService = ComputerSessionService(
+            providers: [
+                CuaComputerSessionProvider(
+                    config: CuaComputerSessionConfig(isEnabled: false),
+                    credentialStore: cuaCredentialStore
+                )
+            ]
+        )
         let transport = MultiplexedRemoteTransport(ssh: sshTransport, orgo: orgoTransport)
         let hermesUpdater = HermesUpdater(orgoTransport: orgoTransport, multiplexed: transport)
 
@@ -174,6 +188,9 @@ final class AppState: ObservableObject {
         self.orgoCredentialStore = orgoCredentialStore
         self.orgoCatalogService = orgoCatalogService
         self.orgoHermesInstaller = orgoHermesInstaller
+        self.desktopEndpointResolver = desktopEndpointResolver
+        self.cuaCredentialStore = cuaCredentialStore
+        self.computerSessionService = computerSessionService
         self.hermesUpdater = hermesUpdater
         self.transport = transport
         self.remoteHermesService = RemoteHermesService(transport: transport)
@@ -185,10 +202,12 @@ final class AppState: ObservableObject {
         self.knowledgeBaseService = KnowledgeBaseService(transport: transport)
         self.cronBrowserService = CronBrowserService(transport: transport)
         self.kanbanBrowserService = KanbanBrowserService(transport: transport)
-        self.terminalWorkspace = TerminalWorkspaceStore(
+        let terminalDriverFactory = TerminalDriverFactory(
             sshTransport: sshTransport,
             orgoTransport: orgoTransport
         )
+        self.terminalDriverFactory = terminalDriverFactory
+        self.terminalWorkspace = TerminalWorkspaceStore(driverFactory: terminalDriverFactory)
         let credentialStore = AgentMailCredentialStore()
         let accountStore = AgentMailAccountStore()
         let agentMailVMScanner = AgentMailVMScanner(
@@ -431,10 +450,8 @@ final class AppState: ObservableObject {
     func isSectionAvailable(_ section: AppSection) -> Bool {
         if section == .connections { return true }
         guard let connection = activeConnection else { return false }
-        // Desktop (VNC) is only meaningful for Orgo VMs.
         if section == .desktop {
-            if case .orgo = connection.transport { return true }
-            return false
+            return connection.capabilities.supportsVisualDesktop
         }
         return true
     }

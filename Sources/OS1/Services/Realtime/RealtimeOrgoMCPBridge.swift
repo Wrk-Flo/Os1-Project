@@ -23,38 +23,42 @@ enum RealtimeOrgoMCPError: LocalizedError {
     }
 }
 
-struct RealtimeOrgoMCPTool: Encodable {
-    let type = "function"
-    let name: String
-    let description: String
-    let parameters: AnyEncodable
-}
-
-struct RealtimeOrgoMCPCallResult: Encodable {
-    let isError: Bool
-    let content: AnyEncodable
-}
-
-final class RealtimeOrgoMCPBridge: @unchecked Sendable {
+final class RealtimeOrgoMCPBridge: RealtimeComputerToolProviding, @unchecked Sendable {
     static let defaultToolsets = "core,screen,files"
     static let defaultDisabledTools = "orgo_upload_file"
 
     private let apiKeyProvider: @Sendable () -> String?
     private let defaultComputerIDProvider: @Sendable () -> String?
+    private let isEnabledProvider: @Sendable () -> Bool
 
     init(
         apiKeyProvider: @escaping @Sendable () -> String?,
-        defaultComputerIDProvider: @escaping @Sendable () -> String?
+        defaultComputerIDProvider: @escaping @Sendable () -> String?,
+        isEnabledProvider: @escaping @Sendable () -> Bool = { true }
     ) {
         self.apiKeyProvider = apiKeyProvider
         self.defaultComputerIDProvider = defaultComputerIDProvider
+        self.isEnabledProvider = isEnabledProvider
+    }
+
+    let providerID = "orgo"
+    let displayName = "Orgo MCP"
+    var unavailableStatus: String {
+        guard isEnabledProvider() else {
+            return "Orgo MCP unavailable: no active Orgo computer selected"
+        }
+        return "Orgo MCP unavailable: missing API key or Node runtime"
     }
 
     var isConfigured: Bool {
-        resolvedAPIKey() != nil && Self.resolveCommand() != nil
+        isEnabledProvider() && resolvedAPIKey() != nil && Self.resolveCommand() != nil
     }
 
-    func listRealtimeTools() async throws -> [RealtimeOrgoMCPTool] {
+    func canHandleTool(name: String) -> Bool {
+        name.hasPrefix("orgo_")
+    }
+
+    func listRealtimeTools() async throws -> [RealtimeComputerTool] {
         let session = try makeSession()
         defer { session.close() }
 
@@ -64,7 +68,7 @@ final class RealtimeOrgoMCPBridge: @unchecked Sendable {
             throw RealtimeOrgoMCPError.invalidResponse("Missing tools array.")
         }
 
-        return tools.compactMap { tool -> RealtimeOrgoMCPTool? in
+        return tools.compactMap { tool -> RealtimeComputerTool? in
             guard let name = tool["name"] as? String else { return nil }
             let description = tool["description"] as? String ?? "Orgo MCP tool \(name)"
             let schema = tool["inputSchema"] as? [String: Any] ?? [
@@ -72,7 +76,7 @@ final class RealtimeOrgoMCPBridge: @unchecked Sendable {
                 "additionalProperties": true,
                 "properties": [:],
             ]
-            return RealtimeOrgoMCPTool(
+            return RealtimeComputerTool(
                 name: name,
                 description: description,
                 parameters: AnyEncodable(schema)
@@ -80,7 +84,7 @@ final class RealtimeOrgoMCPBridge: @unchecked Sendable {
         }
     }
 
-    func callTool(name: String, arguments: [String: Any]) async throws -> RealtimeOrgoMCPCallResult {
+    func callTool(name: String, arguments: [String: Any]) async throws -> RealtimeComputerToolCallResult {
         let session = try makeSession()
         defer { session.close() }
 
@@ -93,7 +97,7 @@ final class RealtimeOrgoMCPBridge: @unchecked Sendable {
             ]
         )
 
-        return RealtimeOrgoMCPCallResult(
+        return RealtimeComputerToolCallResult(
             isError: result["isError"] as? Bool ?? false,
             content: AnyEncodable(result["content"] ?? result)
         )
@@ -351,7 +355,3 @@ struct AnyEncodable: Encodable {
         }
     }
 }
-
-extension RealtimeOrgoMCPTool: @unchecked Sendable {}
-extension RealtimeOrgoMCPCallResult: @unchecked Sendable {}
-extension AnyEncodable: @unchecked Sendable {}

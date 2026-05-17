@@ -80,6 +80,10 @@ struct RootView: View {
         return trimmed.isEmpty ? nil : trimmed
     }
 
+    private var activeConnectionSupportsRealtimeComputerTools: Bool {
+        appState.activeConnection?.capabilities.supportsRealtimeComputerTools == true
+    }
+
     private var activeProfileID: String? {
         appState.activeConnection?.id.uuidString
     }
@@ -94,11 +98,12 @@ struct RootView: View {
             RealtimeVoiceRuntimeView(
                 openAIAPIKey: openAIAPIKey,
                 orgoAPIKey: appState.orgoCredentialStore.loadAPIKey(),
-                orgoDefaultComputerID: activeOrgoComputerID
+                orgoDefaultComputerID: activeOrgoComputerID,
+                isOrgoComputerToolsEnabled: activeConnectionSupportsRealtimeComputerTools && activeOrgoComputerID != nil
             ) { status in
                 appState.updateRealtimeVoiceStatus(status)
             }
-            .id(activeOrgoComputerID ?? "no-active-orgo-computer")
+            .id(activeConnectionSupportsRealtimeComputerTools ? (activeOrgoComputerID ?? "no-active-orgo-computer") : "no-realtime-computer-tools")
             .frame(width: 1, height: 1)
             .opacity(0.01)
             .allowsHitTesting(false)
@@ -246,8 +251,7 @@ struct RootView: View {
             return [.connections]
         }
         var sections: [AppSection] = [.connections, .overview, .sessions, .cronjobs, .kanban, .files, .usage, .skills, .knowledgeBase, .connectors, .providers, .mail, .messaging, .terminal, .doctor]
-        // Desktop is only meaningful for Orgo VMs (SSH hosts have no VM screen).
-        if case .orgo = connection.transport {
+        if connection.capabilities.supportsVisualDesktop {
             sections.append(.desktop)
         }
         return sections

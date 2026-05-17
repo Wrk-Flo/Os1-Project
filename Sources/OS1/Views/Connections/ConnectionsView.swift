@@ -243,16 +243,22 @@ private struct ConnectionCard: View {
 
                 ViewThatFits(in: .horizontal) {
                     HStack(alignment: .top, spacing: 16) {
+                        metadataRow(label: "Transport", value: connection.transportDisplayName)
                         metadataRow(label: "Target", value: resolvedTarget)
-                        metadataRow(label: "SSH user", value: connection.trimmedUser ?? "Default")
-                        metadataRow(label: "Port", value: displayPort)
+                        if case .ssh = connection.transport {
+                            metadataRow(label: "SSH user", value: connection.trimmedUser ?? "Default")
+                            metadataRow(label: "Port", value: displayPort)
+                        }
                         metadataRow(label: "Hermes profile", value: connection.resolvedHermesProfileName)
                     }
 
                     VStack(alignment: .leading, spacing: 12) {
+                        metadataRow(label: "Transport", value: connection.transportDisplayName)
                         metadataRow(label: "Target", value: resolvedTarget)
-                        metadataRow(label: "SSH user", value: connection.trimmedUser ?? "Default")
-                        metadataRow(label: "Port", value: displayPort)
+                        if case .ssh = connection.transport {
+                            metadataRow(label: "SSH user", value: connection.trimmedUser ?? "Default")
+                            metadataRow(label: "Port", value: displayPort)
+                        }
                         metadataRow(label: "Hermes profile", value: connection.resolvedHermesProfileName)
                     }
                 }
@@ -307,7 +313,21 @@ private struct ConnectionCard: View {
     }
 
     private var resolvedTarget: String {
-        connection.trimmedAlias ?? connection.trimmedHost ?? "Not set"
+        if case .orgo(let config) = connection.transport {
+            let workspace = config.workspaceId.trimmingCharacters(in: .whitespacesAndNewlines)
+            let computer = config.computerId.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !workspace.isEmpty && !computer.isEmpty {
+                return "\(workspace) / \(computer)"
+            }
+            if !computer.isEmpty {
+                return computer
+            }
+            if !workspace.isEmpty {
+                return workspace
+            }
+            return "Not set"
+        }
+        return connection.trimmedAlias ?? connection.trimmedHost ?? "Not set"
     }
 
     private var displayPort: String {

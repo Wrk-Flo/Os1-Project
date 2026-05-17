@@ -58,4 +58,16 @@ struct RealtimeCallsMultipartRequestTests {
         #expect(RealtimeOrgoMCPBridge.defaultToolsets == "core,screen,files")
         #expect(RealtimeOrgoMCPBridge.defaultDisabledTools == "orgo_upload_file")
     }
+
+    @Test
+    func realtimeOrgoMCPCanBeDisabledByActiveConnectionContext() {
+        let bridge = RealtimeOrgoMCPBridge(
+            apiKeyProvider: { "orgo-key" },
+            defaultComputerIDProvider: { "computer-id" },
+            isEnabledProvider: { false }
+        )
+
+        #expect(!bridge.isConfigured)
+        #expect(bridge.unavailableStatus == "Orgo MCP unavailable: no active Orgo computer selected")
+    }
 }

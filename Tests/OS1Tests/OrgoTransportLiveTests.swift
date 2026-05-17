@@ -160,6 +160,22 @@ struct OrgoTransportLiveTests {
     }
 
     @Test
+    func resolveVNCEndpointReturnsValidWebsockifyURL() async throws {
+        guard Self.isLive else { return }
+        let (transport, _) = Self.makeFixture()
+        let computerId = ProcessInfo.processInfo.environment["ORGO_DEFAULT_COMPUTER_ID"] ?? ""
+
+        let endpoint = try await transport.resolveVNCEndpoint(computerId: computerId)
+
+        let url = endpoint.webSocketURL
+        #expect(url.scheme == "wss")
+        #expect(url.host?.hasSuffix(".orgo.dev") == true)
+        #expect(url.path == "/websockify")
+        #expect(url.query?.contains("token=") == true)
+        #expect(!endpoint.vncPassword.isEmpty)
+    }
+
+    @Test
     func ensureRunningOnAlreadyRunningVMSucceeds() async throws {
         guard Self.isLive else { return }
         let (transport, _) = Self.makeFixture()

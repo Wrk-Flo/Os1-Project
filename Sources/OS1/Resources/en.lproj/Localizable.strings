@@ -763,6 +763,7 @@
 "New message" = "New message";
 "No AgentMail install detected on %@." = "No AgentMail install detected on %@.";
 "No Composio install detected on %@." = "No Composio install detected on %@.";
+"No desktop provider selected" = "No desktop provider selected";
 "No Orgo VM selected" = "No Orgo VM selected";
 "No connection selected." = "No connection selected.";
 "No draft selected" = "No draft selected";
@@ -780,6 +781,7 @@
 "Paste an API key from your existing AgentMail account." = "Paste an API key from your existing AgentMail account.";
 "Paste my own instead" = "Paste my own instead";
 "Pick a draft on the left to review, send, or delete." = "Pick a draft on the left to review, send, or delete.";
+"Pick a host with desktop capability from the Host tab to view the desktop." = "Pick a host with desktop capability from the Host tab to view the desktop.";
 "Pick a message on the left to read it." = "Pick a message on the left to read it.";
 "Pick a workspace and computer from the Connections tab to view the desktop." = "Pick a workspace and computer from the Connections tab to view the desktop.";
 "Pick an inbox" = "Pick an inbox";
@@ -999,4 +1001,9 @@
 "Browser: %@" = "Browser: %@";
 "Realtime Voice" = "Realtime Voice";
 "Toggle Voice Mode" = "Toggle Voice Mode";
+"Transport" = "Transport";
+"Create a tab to start an interactive shell for the active host." = "Create a tab to start an interactive shell for the active host.";
+"The active host for this workspace." = "The active host for this workspace.";
+"Use SSH for any host you already control. Orgo VM is optional if you have an Orgo account." = "Use SSH for any host you already control. Orgo VM is optional if you have an Orgo account.";
+"Use SSH for any host you already control. Orgo VM is hidden unless explicitly enabled." = "Use SSH for any host you already control. Orgo VM is hidden unless explicitly enabled.";
 "Voice" = "Voice";

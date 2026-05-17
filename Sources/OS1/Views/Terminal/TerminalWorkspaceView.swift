@@ -76,7 +76,7 @@ struct TerminalWorkspaceView: View {
                 ContentUnavailableView(
                     L10n.string("No terminal tab"),
                     systemImage: "terminal",
-                    description: Text(L10n.string("Create a tab to start a real SSH shell for the active host."))
+                    description: Text(L10n.string("Create a tab to start an interactive shell for the active host."))
                 )
             }
         }

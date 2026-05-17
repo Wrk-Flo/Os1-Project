@@ -12,6 +12,15 @@ Duplicate the OS1 experience as closely as possible on Azure:
 - keep credentials local or in managed secret stores,
 - keep Realtime voice working.
 
+Companion decision: `docs/computer-session-provider-plan.md` defines the
+provider-neutral Computer Session lane for Cua/E2B-style disposable desktops and
+sandboxes. Azure remains the control/backbone layer; Cua is added only where
+OS1 needs a governed visual computer that an agent can observe and operate.
+
+Orgo is optional for this plan. The no-Orgo path is Azure VM over OS1's
+existing SSH transport first, then optional Cua planning for governed visual
+computer sessions. Neither path requires Orgo credentials.
+
 ## Current Azure Inventory Observed
 
 Azure CLI is authenticated to:
@@ -80,7 +89,7 @@ Azure resources created for this project are isolated in `os1-project-rg`. Exist
 
 ## Closest Immediate Match: Azure VM Over SSH
 
-This requires no source changes if an Azure VM is reachable through normal non-interactive SSH from the Mac.
+This is the immediate no-Orgo path. It requires no source changes if an Azure VM is reachable through normal non-interactive SSH from the Mac.
 
 1. Install Hermes Agent on the Azure VM.
 2. Make sure `python3` is on the non-interactive SSH PATH.
@@ -101,7 +110,20 @@ This gives the main product workflow immediately. It does not duplicate Orgo's i
 | Direct terminal websocket | SSH-backed SwiftTerm or custom websocket agent | Azure does not expose native raw terminal websocket per VM |
 | Direct VNC websocket | Azure Bastion, VM helper/websockify, or existing VNC service | Native Bastion is not the same as embeddable SwiftTerm/noVNC bytes |
 | VNC password bearer to direct VM API | SSH key, managed identity, or helper-issued token | Requires new security model |
-| Orgo MCP tools for voice | Azure MCP/CLI bridge or custom MCP server | Needs new tool bridge |
+| Orgo MCP tools for voice | Azure MCP/CLI bridge or custom MCP server | `RealtimeComputerToolBridge` now provides the provider-neutral hook; Azure still needs a concrete adapter |
+
+OS1 now has provider-neutral desktop endpoint plumbing for the current noVNC
+surface, with Orgo as the first adapter. This does not make Azure a desktop
+provider. Azure still needs Bastion, an existing VNC service, or a hardened VM
+helper/websockify path before it can expose Desktop in the app.
+
+OS1 also has provider-neutral realtime computer-tool plumbing for the voice
+surface. Orgo MCP remains the only registered adapter, preserving `orgo_` tool
+names and Orgo environment variables. Azure and Cua should add concrete
+adapters only after their tool surface, auth, and audit behavior are designed.
+The Orgo adapter is gated by the active connection capability, so SSH-backed
+Azure voice mode does not advertise Orgo computer tools just because an Orgo key
+exists.
 
 ## Recommended Azure Architecture
 
@@ -133,10 +155,10 @@ Files to change:
   - Add Codable migration and validation tests.
 - `Sources/OS1/App/AppState.swift`
   - Initialize Azure credential/catalog/transport services.
-  - Pass Azure transport into the multiplexer and terminal workspace.
+  - Pass Azure host execution into the multiplexer and terminal driver factory.
 - `Sources/OS1/Services/MultiplexedRemoteTransport.swift`
   - Route `.azure` profiles.
-- `Sources/OS1/Services/Terminal/TerminalSession.swift`
+- `Sources/OS1/Services/Terminal/TerminalDriverFactory.swift`
   - Select Azure terminal driver or SSH fallback.
 - `Sources/OS1/Views/Connections/ConnectionEditorSheet.swift`
   - Add Azure transport picker form: subscription, resource group, VM, username, SSH mode or helper mode.
@@ -169,7 +191,7 @@ There are three viable options:
 
 1. SSH terminal only.
    - Lowest risk.
-   - Already implemented by `TerminalViewHost`.
+   - Already implemented by `TerminalViewHost` and selected through `TerminalDriverFactory`.
    - Requires users to have SSH access.
 
 2. Azure Run Command for background operations, SSH for terminal.
@@ -180,6 +202,7 @@ There are three viable options:
 3. Install a small OS1 VM helper.
    - Closest to Orgo.
    - Helper exposes `/bash`, `/exec`, `/terminal`, and optionally `/websockify`.
+   - Would add a helper-backed terminal driver selected by `TerminalDriverFactory`.
    - Needs TLS/auth/token rotation, systemd unit, firewall rules, logs, updates, and security review.
 
 For "duplicate exactly", option 3 is the closest, but it contradicts the README claim "no helper service on the VM." That claim is possible on Orgo because Orgo provides the per-VM service. Azure does not provide that same service natively.
@@ -236,6 +259,11 @@ Later helper-backed Azure profile:
 - Should the app remain branded `OS1`, or should bundle ID/name be changed for the new repo?
 - Should we keep the current SSH-only Azure parity path, or add a first-class Azure transport and optional VM helper for closer Orgo parity?
 - Should the current SSH allow rule stay pinned to `72.24.145.11/32`, or should it be updated dynamically when this Mac changes networks?
+- Should Cua be wired first as a local/offline demo provider, or as a
+  cloud-hosted disposable session provider with Azure Blob/Application Insights
+  artifact and audit sinks from day one?
+- Should the current noVNC-shaped Desktop endpoint abstraction be enough for
+  Cua's first prototype, or will Cua need a separate viewer/session contract?
 
 ## Practical Next Step
 

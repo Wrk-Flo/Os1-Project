@@ -10,7 +10,7 @@ final class RealtimeVoiceSessionServer: ObservableObject, @unchecked Sendable {
     private var listener: NWListener?
     private var apiKey: String?
     private let openAIAPIKeyProvider: @Sendable () -> String?
-    private let orgoMCPBridge: RealtimeOrgoMCPBridge
+    private let computerToolBridge: RealtimeComputerToolBridge
 
     init(
         openAIAPIKeyProvider: @escaping @Sendable () -> String? = {
@@ -21,12 +21,15 @@ final class RealtimeVoiceSessionServer: ObservableObject, @unchecked Sendable {
         },
         orgoDefaultComputerIDProvider: @escaping @Sendable () -> String? = {
             ProcessInfo.processInfo.environment["ORGO_DEFAULT_COMPUTER_ID"]
-        }
+        },
+        isOrgoComputerToolsEnabledProvider: @escaping @Sendable () -> Bool = { true },
+        computerToolBridge: RealtimeComputerToolBridge? = nil
     ) {
         self.openAIAPIKeyProvider = openAIAPIKeyProvider
-        self.orgoMCPBridge = RealtimeOrgoMCPBridge(
-            apiKeyProvider: orgoAPIKeyProvider,
-            defaultComputerIDProvider: orgoDefaultComputerIDProvider
+        self.computerToolBridge = computerToolBridge ?? RealtimeComputerToolBridge(
+            orgoAPIKeyProvider: orgoAPIKeyProvider,
+            orgoDefaultComputerIDProvider: orgoDefaultComputerIDProvider,
+            isOrgoEnabledProvider: isOrgoComputerToolsEnabledProvider
         )
     }
 
@@ -171,8 +174,8 @@ final class RealtimeVoiceSessionServer: ObservableObject, @unchecked Sendable {
         case ("POST", "/tool"):
             guard let payload = try? JSONSerialization.jsonObject(with: request.body) as? [String: Any],
                   let name = payload["name"] as? String,
-                  name.hasPrefix("orgo_") else {
-                send(.plain(status: 400, body: "Expected Orgo MCP tool call JSON"), on: connection)
+                  computerToolBridge.canHandleTool(name: name) else {
+                send(.plain(status: 400, body: "Expected realtime computer tool call JSON"), on: connection)
                 return
             }
 
@@ -187,37 +190,28 @@ final class RealtimeVoiceSessionServer: ObservableObject, @unchecked Sendable {
     }
 
     private func listToolsResponse() async -> HTTPResponse {
-        guard orgoMCPBridge.isConfigured else {
-            return Self.jsonResponse(RealtimeToolsResponse(
-                tools: [],
-                orgo: RealtimeOrgoStatus(enabled: false, status: "Orgo MCP unavailable: missing API key or Node runtime")
-            ))
-        }
+        let toolList = await computerToolBridge.listTools()
+        let orgo = toolList.providers.first { $0.id == "orgo" }.map {
+            RealtimeOrgoStatus(enabled: $0.enabled, status: $0.status)
+        } ?? RealtimeOrgoStatus(enabled: false, status: "Orgo MCP unavailable")
 
-        do {
-            let tools = try await orgoMCPBridge.listRealtimeTools()
-            return Self.jsonResponse(RealtimeToolsResponse(
-                tools: tools,
-                orgo: RealtimeOrgoStatus(enabled: true, status: "Orgo MCP ready: \(tools.count) tools")
-            ))
-        } catch {
-            return Self.jsonResponse(
-                RealtimeToolsResponse(
-                    tools: [],
-                    orgo: RealtimeOrgoStatus(enabled: false, status: error.localizedDescription)
-                ),
-                status: 502
-            )
-        }
+        return Self.jsonResponse(
+            RealtimeToolsResponse(
+                tools: toolList.tools,
+                providers: toolList.providers,
+                orgo: orgo
+            ),
+            status: toolList.hasProviderError ? 502 : 200
+        )
     }
 
     private func callToolResponse(name: String, arguments: [String: Any]) async -> HTTPResponse {
         do {
-            let result = try await orgoMCPBridge.callTool(name: name, arguments: arguments)
+            let result = try await computerToolBridge.callTool(name: name, arguments: arguments)
             return Self.jsonResponse(result)
         } catch {
             return Self.jsonResponse(
-                RealtimeOrgoMCPCallResult(
+                RealtimeComputerToolCallResult(
                     isError: true,
                     content: AnyEncodable([["type": "text", "text": error.localizedDescription]])
                 ),
@@ -501,17 +495,20 @@ final class RealtimeVoiceSessionServer: ObservableObject, @unchecked Sendable {
 
         async function registerTools() {
           const toolPayload = await fetch("/tools").then((response) => response.json());
-          const orgoTools = Array.isArray(toolPayload.tools) ? toolPayload.tools : [];
+          const computerTools = Array.isArray(toolPayload.tools) ? toolPayload.tools : [];
+          const toolInstructions = computerTools.length > 0
+            ? " You also have registered computer-control tools. Orgo MCP tools are prefixed orgo_ when an active Orgo computer is selected. Prefer read/observe tools before taking actions, and summarize tool results plainly."
+            : "";
           sendEvent({
             type: "session.update",
             session: {
               type: "realtime",
-              instructions: "You are OS1 voice mode. Keep replies brief. When asked about calendar availability, call check_calendar. You also have Orgo MCP tools prefixed orgo_ for inspecting and controlling Orgo cloud computers. Prefer read/observe tools before taking actions, and summarize tool results plainly.",
+              instructions: `You are OS1 voice mode. Keep replies brief. When asked about calendar availability, call check_calendar.${toolInstructions}`,
               tool_choice: "auto",
-              tools: [calendarTool(), ...orgoTools]
+              tools: [calendarTool(), ...computerTools]
             }
           });
-          log(`session.update registered check_calendar + ${orgoTools.length} Orgo MCP tools`);
+          log(`session.update registered check_calendar + ${computerTools.length} computer tools`);
           if (toolPayload.orgo?.status) log(toolPayload.orgo.status);
         }
 
@@ -805,7 +802,8 @@ private struct HTTPResponse {
 }
 
 private struct RealtimeToolsResponse: Encodable {
-    let tools: [RealtimeOrgoMCPTool]
+    let tools: [RealtimeComputerTool]
+    let providers: [RealtimeComputerToolProviderStatus]
     let orgo: RealtimeOrgoStatus
 }
 

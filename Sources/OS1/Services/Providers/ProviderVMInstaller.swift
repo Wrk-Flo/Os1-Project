@@ -165,6 +165,12 @@ extension ProviderVMInstaller {
                     timeout=45,
                     capture_output=True,
                 )
+                import importlib
+                import site
+                user_site = site.getusersitepackages()
+                if user_site and user_site not in sys.path:
+                    sys.path.insert(0, user_site)
+                importlib.invalidate_caches()
                 import yaml  # noqa: F401
                 return True
             except Exception as exc:

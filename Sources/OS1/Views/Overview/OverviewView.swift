@@ -115,7 +115,7 @@ struct OverviewView: View {
     private func currentHostPanel(_ activeConnection: ConnectionProfile) -> some View {
         HermesSurfacePanel(
             title: "Current Host",
-            subtitle: "The active SSH connection for this workspace."
+            subtitle: "The active host for this workspace."
         ) {
             VStack(alignment: .leading, spacing: 16) {
                 VStack(alignment: .leading, spacing: 4) {
@@ -130,21 +130,35 @@ struct OverviewView: View {
                 }
 
                 HermesLabeledValue(
-                    label: "Connection",
-                    value: "SSH",
+                    label: "Transport",
+                    value: activeConnection.transportDisplayName,
                     emphasizeValue: true
                 )
 
-                if let alias = activeConnection.trimmedAlias {
+                switch activeConnection.transport {
+                case .ssh:
+                    if let alias = activeConnection.trimmedAlias {
+                        HermesLabeledValue(
+                            label: "Alias",
+                            value: alias,
+                            isMonospaced: true
+                        )
+                    } else if let host = activeConnection.trimmedHost {
+                        HermesLabeledValue(
+                            label: "Host",
+                            value: host,
+                            isMonospaced: true
+                        )
+                    }
+                case .orgo(let config):
                     HermesLabeledValue(
-                        label: "Alias",
-                        value: alias,
+                        label: "Workspace",
+                        value: config.workspaceId.isEmpty ? "Not set" : config.workspaceId,
                         isMonospaced: true
                     )
-                } else if let host = activeConnection.trimmedHost {
                     HermesLabeledValue(
-                        label: "Host",
-                        value: host,
+                        label: "Computer",
+                        value: config.computerId.isEmpty ? "Not set" : config.computerId,
                         isMonospaced: true
                     )
                 }

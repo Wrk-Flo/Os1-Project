@@ -4,6 +4,45 @@ import Testing
 
 struct ConnectionProfileTransportTests {
     @Test
+    func sshAndOrgoExposeExpectedCapabilities() {
+        let sshProfile = ConnectionProfile(
+            label: "SSH",
+            transport: .ssh(SSHConfig(alias: "os1-hermes-dev", user: "hermes"))
+        )
+        let orgoProfile = ConnectionProfile(
+            label: "Orgo",
+            transport: .orgo(OrgoConfig(workspaceId: "ws_123", computerId: "computer_123"))
+        )
+
+        #expect(sshProfile.capabilities.supportsHermesRemote)
+        #expect(sshProfile.capabilities.supportsInteractiveTerminal)
+        #expect(!sshProfile.capabilities.supportsVisualDesktop)
+        #expect(!sshProfile.capabilities.supportsRealtimeComputerTools)
+        #expect(!sshProfile.capabilities.supportsManagedHermesInstall)
+
+        #expect(orgoProfile.capabilities.supportsHermesRemote)
+        #expect(orgoProfile.capabilities.supportsInteractiveTerminal)
+        #expect(orgoProfile.capabilities.supportsVisualDesktop)
+        #expect(orgoProfile.capabilities.supportsRealtimeComputerTools)
+        #expect(orgoProfile.capabilities.supportsManagedHermesInstall)
+    }
+
+    @Test
+    func noOrgoProfileKeepsOrgoOnlySurfacesDisabled() {
+        let profile = ConnectionProfile(
+            label: "Azure VM",
+            transport: .ssh(SSHConfig(alias: "os1-hermes-dev", user: "azureuser"))
+        )
+
+        #expect(profile.transportDisplayName == "SSH")
+        #expect(profile.capabilities.supportsHermesRemote)
+        #expect(profile.capabilities.supportsInteractiveTerminal)
+        #expect(!profile.capabilities.supportsVisualDesktop)
+        #expect(!profile.capabilities.supportsRealtimeComputerTools)
+        #expect(!profile.capabilities.supportsManagedHermesInstall)
+    }
+
+    @Test
     func legacySSHOnlyJSONDecodesIntoSSHTransport() throws {
         // Pre-port profile JSON shape — top-level sshAlias/sshHost/sshPort/sshUser, no `transport` field.
         let legacy = """
@@ -103,6 +142,40 @@ struct ConnectionProfileTransportTests {
         } else {
             Issue.record("Setters on SSH-shaped accessors must not switch transport kind")
         }
+    }
+
+    @Test
+    func orgoWorkspaceScopeFingerprintIncludesWorkspaceAndComputerIdentity() {
+        let first = ConnectionProfile(
+            label: "Orgo A",
+            transport: .orgo(OrgoConfig(workspaceId: " ws ", computerId: "vm-a"))
+        )
+        let second = ConnectionProfile(
+            label: "Orgo B",
+            transport: .orgo(OrgoConfig(workspaceId: "ws", computerId: "vm-b"))
+        )
+
+        #expect(first.workspaceScopeFingerprint == "orgo|ws|vm-a|~/.hermes")
+        #expect(second.workspaceScopeFingerprint == "orgo|ws|vm-b|~/.hermes")
+        #expect(first.workspaceScopeFingerprint != second.workspaceScopeFingerprint)
+        #expect(first.hostConnectionFingerprint == "orgo|ws|vm-a")
+        #expect(second.hostConnectionFingerprint == "orgo|ws|vm-b")
+    }
+
+    @Test
+    func orgoHermesProfileChangesWorkspaceScopeWithoutChangingComputerIdentity() {
+        let base = ConnectionProfile(
+            label: "Orgo",
+            transport: .orgo(OrgoConfig(workspaceId: "ws", computerId: "vm")),
+            createdAt: Date(timeIntervalSince1970: 0),
+            updatedAt: Date(timeIntervalSince1970: 0)
+        )
+        let profileScoped = base.applyingHermesProfile(named: "researcher")
+
+        #expect(base.workspaceScopeFingerprint == "orgo|ws|vm|~/.hermes")
+        #expect(profileScoped.workspaceScopeFingerprint == "orgo|ws|vm|~/.hermes/profiles/researcher")
+        #expect(base.workspaceScopeFingerprint != profileScoped.workspaceScopeFingerprint)
+        #expect(base.hostConnectionFingerprint == profileScoped.hostConnectionFingerprint)
     }
 
     @Test

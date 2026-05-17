@@ -1,20 +1,20 @@
 import SwiftUI
 @preconcurrency import WebKit
 
-/// Live VNC view of the active Orgo VM's desktop. Only shown when the
-/// active connection is an Orgo VM — for SSH hosts there's no remote
-/// framebuffer, so this section is hidden in `availableSections`.
+/// Live desktop view for providers that expose a noVNC-compatible endpoint.
+/// SSH hosts have no remote framebuffer, so this section is hidden unless the
+/// active connection advertises visual desktop capability.
 ///
 /// Architecture mirrors `jxspam/orgo-wrapper`: a `WKWebView` hosts a
-/// bundled `vnc.html` running noVNC; Swift resolves the websockify URL
-/// via `OrgoTransport.resolveVNCEndpoint` and forwards it through
-/// `evaluateJavaScript`. Status flows back via a `WKScriptMessageHandler`.
+/// bundled `vnc.html` running noVNC; Swift resolves a provider-neutral desktop
+/// endpoint and forwards it through `evaluateJavaScript`. Status flows back via
+/// a `WKScriptMessageHandler`.
 struct DesktopView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.os1Theme) private var theme
 
     @State private var status: VNCStatus = .idle
-    @State private var endpoint: OrgoVNCEndpoint?
+    @State private var endpoint: DesktopEndpoint?
     @State private var resolveTask: Task<Void, Never>?
     @State private var retryDelay: UInt64 = 5_000_000_000  // 5s, doubles to 60s
     @State private var retryTask: Task<Void, Never>?
@@ -22,24 +22,24 @@ struct DesktopView: View {
 
     var body: some View {
         Group {
-            if let computerId = activeOrgoComputerId {
-                content(computerId: computerId)
+            if let target = activeDesktopTarget {
+                content(target: target)
             } else {
                 noConnectionPlaceholder
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(theme.palette.coral)
-        .onChange(of: activeOrgoComputerId) { _, newID in
-            if let newID {
-                resolve(computerId: newID)
+        .onChange(of: activeDesktopTarget) { _, newTarget in
+            if let newTarget {
+                resolve(target: newTarget)
             } else {
                 tearDown()
             }
         }
         .onAppear {
-            if let id = activeOrgoComputerId, endpoint == nil {
-                resolve(computerId: id)
+            if let target = activeDesktopTarget, endpoint == nil {
+                resolve(target: target)
             }
         }
         .onDisappear { tearDown() }
@@ -47,9 +47,9 @@ struct DesktopView: View {
 
     // MARK: - Header / chrome
 
-    private func content(computerId: String) -> some View {
+    private func content(target: DesktopTarget) -> some View {
         VStack(spacing: 0) {
-            header(computerId: computerId)
+            header(target: target)
 
             ZStack {
                 if let endpoint {
@@ -70,7 +70,7 @@ struct DesktopView: View {
         }
     }
 
-    private func header(computerId: String) -> some View {
+    private func header(target: DesktopTarget) -> some View {
         HStack(spacing: 10) {
             Image(systemName: "display")
                 .font(.system(size: 14, weight: .semibold))
@@ -83,7 +83,7 @@ struct DesktopView: View {
             Text("·")
                 .foregroundStyle(theme.palette.onCoralMuted)
 
-            Text(computerId)
+            Text(target.displayName)
                 .font(.system(.caption, design: .monospaced))
                 .foregroundStyle(theme.palette.onCoralMuted)
                 .lineLimit(1)
@@ -171,11 +171,11 @@ struct DesktopView: View {
                 .font(.system(size: 36, weight: .light))
                 .foregroundStyle(theme.palette.onCoralMuted)
 
-            Text(L10n.string("No Orgo VM selected"))
+            Text(L10n.string("No desktop provider selected"))
                 .os1Style(theme.typography.titlePanel)
                 .foregroundStyle(theme.palette.onCoralPrimary)
 
-            Text(L10n.string("Pick a workspace and computer from the Host tab to view the desktop."))
+            Text(L10n.string("Pick a host with desktop capability from the Host tab to view the desktop."))
                 .os1Style(theme.typography.body)
                 .foregroundStyle(theme.palette.onCoralSecondary)
                 .multilineTextAlignment(.center)
@@ -186,29 +186,25 @@ struct DesktopView: View {
 
     // MARK: - Connection lifecycle
 
-    private var activeOrgoComputerId: String? {
-        guard let connection = appState.activeConnection else { return nil }
-        if case .orgo(let cfg) = connection.transport, !cfg.computerId.isEmpty {
-            return cfg.computerId
-        }
-        return nil
+    private var activeDesktopTarget: DesktopTarget? {
+        appState.desktopEndpointResolver.target(for: appState.activeConnection)
     }
 
     private var shouldShowOverlay: Bool {
         status != .connected
     }
 
-    private func resolve(computerId: String) {
+    private func resolve(target: DesktopTarget) {
         cancelRetryTask()
         resolveTask?.cancel()
         status = .resolving
         lastError = ""
         endpoint = nil
 
-        let transport = appState.orgoTransport
+        let resolver = appState.desktopEndpointResolver
         resolveTask = Task { @MainActor in
             do {
-                let resolved = try await transport.resolveVNCEndpoint(computerId: computerId)
+                let resolved = try await resolver.resolveEndpoint(for: target)
                 guard !Task.isCancelled else { return }
                 self.endpoint = resolved
                 // status flips to .connecting / .connected via the JS bridge
@@ -216,7 +212,7 @@ struct DesktopView: View {
                 guard !Task.isCancelled else { return }
                 self.status = .error
                 self.lastError = (error as NSError).localizedDescription
-                scheduleRetry(computerId: computerId)
+                scheduleRetry(target: target)
             }
         }
     }
@@ -235,17 +231,17 @@ struct DesktopView: View {
         case "disconnected":
             status = .disconnected
             if let err = message.error { lastError = err }
-            if let id = activeOrgoComputerId { scheduleRetry(computerId: id) }
+            if let target = activeDesktopTarget { scheduleRetry(target: target) }
         case "error":
             status = .error
             if let err = message.error { lastError = err }
-            if let id = activeOrgoComputerId { scheduleRetry(computerId: id) }
+            if let target = activeDesktopTarget { scheduleRetry(target: target) }
         default:
             break
         }
     }
 
-    private func scheduleRetry(computerId: String) {
+    private func scheduleRetry(target: DesktopTarget) {
         cancelRetryTask()
         let delay = retryDelay
         retryTask = Task { @MainActor in
@@ -253,15 +249,15 @@ struct DesktopView: View {
             guard !Task.isCancelled else { return }
             // Exponential backoff capped at 60s.
             self.retryDelay = min(delay * 2, 60_000_000_000)
-            self.resolve(computerId: computerId)
+            self.resolve(target: target)
         }
     }
 
     private func manualReconnect() {
         retryDelay = 5_000_000_000
         cancelRetryTask()
-        if let id = activeOrgoComputerId {
-            resolve(computerId: id)
+        if let target = activeDesktopTarget {
+            resolve(target: target)
         }
     }
 
@@ -325,7 +321,7 @@ struct VNCStatusMessage: Decodable {
 // MARK: - WKWebView host
 
 private struct VNCWebView: NSViewRepresentable {
-    let endpoint: OrgoVNCEndpoint
+    let endpoint: DesktopEndpoint
     let onStatus: (VNCStatusMessage) -> Void
 
     func makeCoordinator() -> Coordinator {
@@ -389,7 +385,7 @@ private struct VNCWebView: NSViewRepresentable {
     @MainActor
     final class Coordinator: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
         var onStatus: (VNCStatusMessage) -> Void
-        var endpoint: OrgoVNCEndpoint?
+        var endpoint: DesktopEndpoint?
         weak var webView: WKWebView?
         var didFinishInitialLoad = false
 
@@ -417,7 +413,7 @@ private struct VNCWebView: NSViewRepresentable {
             // password doesn't break the JS expression.
             let payload: [String: String] = [
                 "wsUrl": endpoint.webSocketURL.absoluteString,
-                "password": endpoint.vncPassword,
+                "password": endpoint.password,
             ]
             guard
                 let data = try? JSONSerialization.data(withJSONObject: payload),

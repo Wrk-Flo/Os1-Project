@@ -361,7 +361,16 @@ extension ConnectionProfile {
 
 extension ConnectionProfile {
     var workspaceScopeFingerprint: String {
-        [
+        if case .orgo(let config) = transport {
+            return [
+                "orgo",
+                config.workspaceId.trimmingCharacters(in: .whitespacesAndNewlines),
+                config.computerId.trimmingCharacters(in: .whitespacesAndNewlines),
+                remoteHermesHomePath
+            ].joined(separator: "|")
+        }
+
+        return [
             effectiveTarget,
             trimmedUser ?? "",
             resolvedPort.map(String.init) ?? "",
@@ -370,7 +379,15 @@ extension ConnectionProfile {
     }
 
     var hostConnectionFingerprint: String {
-        [
+        if case .orgo(let config) = transport {
+            return [
+                "orgo",
+                config.workspaceId.trimmingCharacters(in: .whitespacesAndNewlines),
+                config.computerId.trimmingCharacters(in: .whitespacesAndNewlines)
+            ].joined(separator: "|")
+        }
+
+        return [
             effectiveTarget,
             trimmedUser ?? "",
             resolvedPort.map(String.init) ?? ""
@@ -394,10 +411,34 @@ extension ConnectionProfile {
     }
 
     var displayDestination: String {
+        if case .orgo(let config) = transport {
+            let workspace = config.workspaceId.trimmingCharacters(in: .whitespacesAndNewlines)
+            let computer = config.computerId.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !workspace.isEmpty && !computer.isEmpty {
+                return "\(workspace) / \(computer)"
+            }
+            if !computer.isEmpty {
+                return computer
+            }
+            if !workspace.isEmpty {
+                return workspace
+            }
+            return "Orgo VM"
+        }
+
         guard let user = trimmedUser else {
             return effectiveTarget
         }
         return "\(user)@\(effectiveTarget)"
+    }
+
+    var transportDisplayName: String {
+        switch transport {
+        case .ssh:
+            return "SSH"
+        case .orgo:
+            return "Orgo VM"
+        }
     }
 }
 

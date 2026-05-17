@@ -12,12 +12,14 @@ struct RealtimeVoicePanelView: View {
         openAIAPIKey: String? = nil,
         orgoAPIKey: String? = nil,
         orgoDefaultComputerID: String? = nil,
+        isOrgoComputerToolsEnabled: Bool = true,
         onClose: @escaping () -> Void
     ) {
         _server = StateObject(wrappedValue: RealtimeVoiceSessionServer(
             openAIAPIKeyProvider: { openAIAPIKey },
             orgoAPIKeyProvider: { orgoAPIKey },
-            orgoDefaultComputerIDProvider: { orgoDefaultComputerID }
+            orgoDefaultComputerIDProvider: { orgoDefaultComputerID },
+            isOrgoComputerToolsEnabledProvider: { isOrgoComputerToolsEnabled }
         ))
         self.onClose = onClose
     }
@@ -100,12 +102,14 @@ struct RealtimeVoiceRuntimeView: View {
         openAIAPIKey: String? = nil,
         orgoAPIKey: String? = nil,
         orgoDefaultComputerID: String? = nil,
+        isOrgoComputerToolsEnabled: Bool = true,
         onStatus: @escaping (String) -> Void
     ) {
         _server = StateObject(wrappedValue: RealtimeVoiceSessionServer(
             openAIAPIKeyProvider: { openAIAPIKey },
             orgoAPIKeyProvider: { orgoAPIKey },
-            orgoDefaultComputerIDProvider: { orgoDefaultComputerID }
+            orgoDefaultComputerIDProvider: { orgoDefaultComputerID },
+            isOrgoComputerToolsEnabledProvider: { isOrgoComputerToolsEnabled }
         ))
         self.onStatus = onStatus
     }

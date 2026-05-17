@@ -1,6 +1,10 @@
 # Azure Operations
 
-This runbook covers the standalone OS1 Azure VM used through the existing SSH transport. It does not create app source changes or install a new VM helper service.
+This runbook covers the standalone OS1 Azure VM used through the existing SSH transport. It is the current no-Orgo path for running OS1 against a cloud host, and it does not create app source changes or install a new VM helper service.
+
+For the separate provider-neutral Computer Session lane covering disposable
+visual desktops and sandboxes, see `docs/computer-session-provider-plan.md`.
+This runbook remains scoped to Azure VM operations over SSH.
 
 ## Scope
 
@@ -195,7 +199,7 @@ You can start testing OS1 against the Azure VM now. Use this order:
 
 Do not paste or log provider, Composio, AgentMail, Telegram, Orgo, or OpenAI keys in shell transcripts. OS1 should write them through Keychain/local UI flows and remote `~/.hermes` config/env files.
 
-Current limitation: Azure uses OS1's SSH transport. The voice-mode Orgo MCP bridge remains Orgo-specific in this codebase, so Azure VM tools are available to Hermes through the VM's Hermes config and connector setup, not through the Orgo Realtime voice bridge.
+Current limitation: Azure uses OS1's SSH transport. Voice-mode computer tools now route through `RealtimeComputerToolBridge`, but Orgo MCP remains the only registered adapter. Azure VM tools are available to Hermes through the VM's Hermes config and connector setup, not through Realtime voice tools.
 
 ## OS1 App Verification
 

@@ -23,6 +23,17 @@ The core architecture is:
 
 The cloud-computer implementation is currently Orgo-specific. The transport boundary is clean enough to add Azure, but Azure cannot exactly duplicate Orgo's "direct per-VM terminal websocket and HTTP `/bash`/`/exec` API with no VM helper" unless we install our own helper on the VM or use SSH. Azure's native VM APIs provide provisioning, run-command, identity, logging, disks, and networking, but not a raw interactive terminal websocket equivalent.
 
+The companion plan for the new provider-neutral Computer Session lane is
+`docs/computer-session-provider-plan.md`. Use it as the decision record before
+generalizing Desktop, Realtime, terminal, or sandbox behavior beyond the current
+Orgo and SSH transports.
+
+Orgo is optional at runtime. Feature surfaces should key off
+`ConnectionProfile.capabilities`, not the presence of saved Orgo credentials:
+SSH-backed Azure/direct-host profiles keep Desktop/noVNC, managed Orgo install,
+and Orgo Realtime computer tools hidden unless the active profile is an Orgo VM
+with the required computer selection.
+
 ## Root Files
 
 - `Package.swift`: SwiftPM package named `OS1`, one executable target `OS1`, one test target, macOS 14 minimum, and a local dependency on `Vendor/SwiftTerm`.
@@ -54,6 +65,9 @@ The cloud-computer implementation is currently Orgo-specific. The transport boun
 The models folder is mostly Codable/Equatable data structures used by services and views:
 
 - `ConnectionProfile.swift`: transport model. Currently supports `.ssh(SSHConfig)` and `.orgo(OrgoConfig)`, with backward-compatible decoding from legacy SSH-only profiles.
+- `ConnectionCapabilities.swift`: declares which active-profile features are
+  visible. SSH supports Hermes remote operations and terminal only; Orgo adds
+  visual desktop, Realtime computer tools, and managed Hermes install.
 - `AppSection.swift`: navigation sections and symbols.
 - `RemoteDiscovery.swift`: shape returned by remote Hermes discovery: profiles, paths, session store, kanban state.
 - `SessionModels.swift`, `HermesChatModels.swift`: sessions, transcript metadata, chat invocation state.
@@ -63,6 +77,10 @@ The models folder is mostly Codable/Equatable data structures used by services a
 - `TerminalTheme.swift`, `TerminalTabModel.swift`, `TerminalWorkspaceContext.swift`: terminal presentation and workspace state.
 
 Azure parity requires extending `TransportKind`, `TransportConfig`, `ConnectionProfile` accessors, validation, display text, tests, and Codable migration behavior.
+
+Computer Session provider work should follow
+`docs/computer-session-provider-plan.md` before adding new transport-specific
+conditionals here.
 
 ## `Sources/OS1/Resources`
 
@@ -101,6 +119,10 @@ Services are the real system boundary.
   - VNC endpoint is `wss://<fly_instance_id>.orgo.dev/websockify?token=...`.
 - `OrgoHermesInstaller.swift`: long-running official Hermes installer path, with clock drift, apt lock, and missing git handling.
 
+### `Services/Desktop`
+
+- `DesktopEndpointResolving.swift`: provider-neutral noVNC/websockify endpoint contract plus the first Orgo adapter. `DesktopView` consumes this resolver instead of calling `OrgoTransport` directly.
+
 ### `Services/SSH`
 
 - `SSHTransport.swift`: runs `/usr/bin/ssh` in batch mode, with ControlMaster for service calls and isolated sessions for interactive terminal shells. Remote JSON calls are Python scripts piped to `python3 -`.
@@ -109,19 +131,28 @@ SSH is the fastest Azure route because it already works with any Azure VM reacha
 
 ### `Services/Terminal`
 
-- `TerminalSession.swift`: chooses `TerminalViewHost` for SSH or `OrgoTerminalDriver` for Orgo.
+- `TerminalDriverFactory.swift`: owns SSH-vs-Orgo terminal driver selection.
+- `TerminalSession.swift`: receives a selected `TerminalDriver` and manages lifecycle/event state.
 - `OrgoTerminalDriver.swift`: resolves Orgo websocket endpoint, mounts SwiftTerm, streams input/resize/ping messages, parses output frames, and feeds bytes to the terminal view.
-- `TerminalViewHost.swift`, `TerminalDriver.swift`, `TerminalWorkspaceStore.swift`: terminal driver abstraction, tab/session management, and AppKit host view.
+- `TerminalViewHost.swift`, `TerminalDriver.swift`, `TerminalWorkspaceStore.swift`: SSH local-process host view, terminal driver abstraction, and tab/session management. `TerminalWorkspaceStore` depends on the driver factory rather than concrete transports.
 
-Azure needs either an SSH terminal path using the existing driver or a new websocket driver backed by a VM helper/gateway.
+Azure needs either an SSH terminal path through the factory's existing SSH driver or a new websocket driver backed by a VM helper/gateway.
 
 ### `Services/Realtime`
 
 - `RealtimeVoiceSessionServer.swift`: local loopback HTTP server. The hidden web view posts SDP to `/session`; Swift forwards multipart SDP/session config to OpenAI Realtime calls. It also exposes `/tools` and `/tool` for Orgo MCP-backed realtime function tools.
+- `RealtimeComputerToolBridge.swift`: provider-neutral realtime computer-tool
+  aggregator. It reports provider status, routes tool calls by provider-owned
+  tool name, filters to the advertised tool surface, and keeps unregistered
+  providers such as Cua out of the Realtime tool surface.
 - `RealtimeOrgoMCPBridge.swift`: starts `npx -y @orgo-ai/mcp` or a configured JS path, lists MCP tools, and forwards tool calls. Defaults expose `core,screen,files`, disable upload, and keep shell/admin opt-in.
 - `RealtimeCallsMultipartRequest.swift`: multipart body builder.
 
-Azure parity can keep OpenAI Realtime unchanged, but Orgo MCP tools need an Azure-specific MCP bridge or a generic provider abstraction.
+Azure parity can keep OpenAI Realtime unchanged. New computer-control providers
+should add adapters behind `RealtimeComputerToolBridge`; Cua should not expose
+Realtime tools until its OS1 auth, session lifecycle, recording, streaming, and
+cleanup contracts are explicit. The Orgo adapter is also gated by the active
+connection's realtime-computer-tools capability and active Orgo computer ID.
 
 ### Other Service Subfolders
 
@@ -159,7 +190,7 @@ Top-level UI is `RootView.swift`. Each feature is split by folder:
 - `Skills`: skills viewer/detail.
 - `CronJobs`: cron job manager.
 - `Terminal`: tabbed terminal workspace using SwiftTerm.
-- `Desktop`: VNC/desktop view.
+- `Desktop`: VNC/desktop view backed by `DesktopEndpointResolving`; Orgo is the only current endpoint adapter.
 - `Providers`: provider connection, validation, and install UI.
 - `Connectors`: Composio connector UI.
 - `Mail`: AgentMail setup/inbox/compose.
@@ -171,7 +202,7 @@ Top-level UI is `RootView.swift`. Each feature is split by folder:
 
 ## `Tests/OS1Tests`
 
-There are 22 test files. Coverage focuses on models, transport routing, generated Python scripts, provider handling, credential store behavior, localization coverage, and Realtime request building. `OrgoTransportLiveTests.swift` is skipped unless `ORGO_LIVE_TESTS=1`, `ORGO_API_KEY`, and `ORGO_DEFAULT_COMPUTER_ID` are present.
+There are 27 test files. Coverage focuses on models, transport routing, generated Python scripts, provider handling, credential store behavior, localization coverage, desktop endpoint resolution, terminal driver selection, and Realtime request building. `OrgoTransportLiveTests.swift` is skipped unless `ORGO_LIVE_TESTS=1`, `ORGO_API_KEY`, and `ORGO_DEFAULT_COMPUTER_ID` are present.
 
 Important test surfaces for an Azure implementation:
 

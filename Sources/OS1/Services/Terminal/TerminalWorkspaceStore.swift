@@ -5,12 +5,10 @@ final class TerminalWorkspaceStore: ObservableObject {
     @Published private(set) var tabs: [TerminalTabModel] = []
     @Published var selectedTabID: UUID?
 
-    private let sshTransport: SSHTransport
-    private let orgoTransport: OrgoTransport
+    private let driverFactory: any TerminalDriverMaking
 
-    init(sshTransport: SSHTransport, orgoTransport: OrgoTransport) {
-        self.sshTransport = sshTransport
-        self.orgoTransport = orgoTransport
+    init(driverFactory: any TerminalDriverMaking) {
+        self.driverFactory = driverFactory
     }
 
     var selectedTab: TerminalTabModel? {
@@ -41,11 +39,13 @@ final class TerminalWorkspaceStore: ObservableObject {
 
     @discardableResult
     func addTab(for connection: ConnectionProfile, startupCommandLine: String? = nil) -> TerminalTabModel {
+        let driver = driverFactory.makeDriver(
+            for: connection,
+            startupCommandLine: startupCommandLine
+        )
         let session = TerminalSession(
             connection: connection,
-            sshTransport: sshTransport,
-            orgoTransport: orgoTransport,
-            startupCommandLine: startupCommandLine
+            driver: driver
         )
         let tab = TerminalTabModel(
             title: connection.label,

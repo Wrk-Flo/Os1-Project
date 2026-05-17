@@ -1,31 +1,26 @@
 # Hermes Desktop - OS1 Edition
 
-> **OS1 by Element Software** · powered by Orgo · forked from Hermes Desktop
+> **OS1 by Element Software** · SSH-first Hermes workspace · optional Orgo support · forked from Hermes Desktop
 
-A native macOS interface for an AI agent that lives in a cloud computer.
+A native macOS interface for a Hermes Agent running on a host you control.
 Inspired by *Her* (2013): warm coral on cream, thin type, calm motion.
 
-Provision a cloud computer, hand it to the agent, and stay in one
-focused workspace: sessions, kanban, files, skills, cron jobs, and a
-real terminal. The infrastructure is Orgo; the agent on it is Hermes.
-The product you touch is OS1.
+Connect over SSH, point OS1 at the agent, and stay in one focused
+workspace: sessions, kanban, files, skills, cron jobs, and a real
+terminal. Azure VMs work through the same SSH path. Orgo remains an
+optional managed cloud-computer provider if you already have it.
 
 ## What you get
 
-- **Cloud computers, end to end**: paste your API key once, pick a
-  workspace, pick a computer (or create one), save. The app talks
-  directly to the platform's HTTP API and the per-VM websocket
-  terminal — no SSH, no gateway, no helper service on the VM.
-- **One-click agent install** on a fresh computer. The first time you
-  open the workspace and the agent isn't there, the Overview screen
-  surfaces an "Install Hermes Agent" button. ~60–90 seconds later
-  Sessions, Kanban, Files, Skills, and Cron all populate.
-- **Real interactive shell** over the per-VM terminal websocket.
-  Bytes stream in real time; resize works; output and history reflow
-  cleanly.
-- **SSH connections still supported** for hosts you reach over SSH
-  today. Same flow as the upstream Hermes Desktop fork OS1 was built
-  on.
+- **SSH-first workspace access** for hosts you already control:
+  another Mac, a Raspberry Pi, a VPS, or an Azure VM.
+- **Real interactive shell** for the active host. SSH uses the native
+  local terminal path; Orgo uses its optional websocket terminal path.
+- **Optional Orgo managed computers**: if you have an Orgo account, OS1
+  can still list workspaces/computers, create VMs, install Hermes, and
+  open Desktop/noVNC surfaces.
+- **Provider-neutral Computer Session planning** for future Cua and
+  sandbox providers without requiring Orgo.
 - **Everything else** from the foundation: native Sessions browser
   with full-text search, Kanban board, file editor with conflict
   checks, skills viewer, cron job manager, profile-aware paths,
@@ -35,17 +30,30 @@ The product you touch is OS1.
 
 - macOS 14 or newer (Apple Silicon or Intel — universal build)
 - One of:
-  - An **Orgo account** with an API key (the cloud-computer infra
-    powering OS1 — get a key at
-    [orgo.ai/settings/api-keys](https://www.orgo.ai/settings/api-keys)),
-    OR
   - A host you already reach with `ssh` from this Mac without
-    interactive prompts (same flow as upstream Hermes Desktop)
+    interactive prompts, including an Azure VM, OR
+  - An optional **Orgo account** with an API key if you want Orgo's
+    managed cloud-computer flow.
 
-For cloud computers, the app handles VM provisioning, agent
-installation, and the websocket terminal automatically. For SSH
-connections, the host needs `python3` on the non-interactive SSH PATH
-and Hermes already installed.
+For SSH connections, the host needs `python3` on the non-interactive SSH
+PATH and Hermes already installed. For Orgo connections, the app handles
+VM provisioning, agent installation, and the websocket terminal.
+
+You do not need an Orgo account to use OS1 with Azure or another
+SSH-reachable host. The Azure runbook in
+[`docs/azure-operations.md`](docs/azure-operations.md) is the current
+no-Orgo operating path. Cua planning is separate: it is for optional,
+approval-gated computer sessions, not a requirement for SSH usage.
+
+Orgo-specific capabilities stay inactive unless the active connection is
+an Orgo VM with a computer selected. SSH profiles do not show Desktop/noVNC
+or Realtime computer-control tools, even if an Orgo API key is saved for
+another profile.
+
+Planning for the provider-neutral Computer Session lane lives in
+[`docs/computer-session-provider-plan.md`](docs/computer-session-provider-plan.md).
+It covers future Cua/E2B-style disposable desktop and sandbox providers
+without changing the current Orgo and SSH setup flow.
 
 ## Install
 
@@ -58,7 +66,27 @@ the app, choose Open, and confirm.
 
 ## Setup
 
-### Cloud computer (recommended)
+### SSH or Azure VM
+
+1. Open the **Connections** tab → click **Add Host**
+2. Keep the transport picker on **SSH**
+3. Enter an SSH alias or host, plus optional user/port and Hermes profile.
+4. Save → the connection is selectable from the host list.
+
+For the no-Orgo Azure path, use the SSH profile from
+[`docs/azure-operations.md`](docs/azure-operations.md) once the VM is
+running and reachable from this Mac.
+
+### Orgo VM (optional)
+
+Use this only if you already have or want an Orgo account.
+New Orgo profiles are hidden by default in public builds. To create one
+during development or for an Orgo-enabled run, launch OS1 with
+`OS1_ENABLE_ORGO=1`. Existing saved Orgo profiles remain visible and
+editable without the flag.
+The Orgo setup path enables managed VM provisioning, Desktop/noVNC, the
+managed Hermes installer, and Orgo-backed Realtime computer tools for that
+connection. It is not required for SSH or Azure VM usage.
 
 1. Open the **Connections** tab → click **Add Host**
 2. Switch the transport picker to **Orgo VM**
@@ -71,11 +99,6 @@ the app, choose Open, and confirm.
 7. If the agent isn't installed on the VM, the **Overview** screen
    shows an install banner. One click runs the official Hermes
    Agent installer. You can use the rest of the app while it runs.
-
-### SSH
-
-Add a connection and switch the transport picker to **SSH**. Alias or
-host, optional user/port, optional Hermes profile.
 
 ## Build from source
 
@@ -111,6 +134,12 @@ Run from source with an environment fallback:
 OPENAI_API_KEY="sk-..." swift run OS1
 ```
 
+Enable new Orgo profile creation only for Orgo-enabled runs:
+
+```sh
+OS1_ENABLE_ORGO=1 swift run OS1
+```
+
 Run the packaged app from a shell with an environment fallback:
 
 ```sh
@@ -131,15 +160,16 @@ microphone access, opens the `oai-events` data channel, registers a sample
 `check_calendar(date, time)` function with `session.update`, and asks
 the model to greet with `hello, can you hear me?`.
 
-The same voice session also exposes Orgo MCP tools to the model as
-Realtime function tools. OS1 starts the MCP server locally, reads tools
-with `tools/list`, registers them with `session.update`, and forwards
-model tool calls back to `tools/call`; Orgo credentials stay in the
-Swift app and are never sent to the browser or model. By default the
-Realtime voice bridge exposes `core,screen,files`, disables file upload,
-uses the saved Orgo API key in OS1 or `ORGO_API_KEY` if no key is saved,
-and passes the active Orgo connection's computer ID as
-`ORGO_DEFAULT_COMPUTER_ID`.
+The same voice session exposes computer-control tools through a
+provider-neutral Realtime tool bridge. Orgo MCP is the first registered
+adapter: OS1 starts the MCP server locally, reads tools with
+`tools/list`, registers them with `session.update`, and forwards model
+tool calls back to `tools/call`; Orgo credentials stay in the Swift app
+and are never sent to the browser or model. By default the Orgo adapter
+exposes `core,screen,files`, disables file upload, uses the saved Orgo
+API key in OS1 or `ORGO_API_KEY` if no key is saved, and passes the
+active Orgo connection's computer ID as `ORGO_DEFAULT_COMPUTER_ID`.
+Cua realtime tools are not exposed yet.
 
 Voice mode runs `npx -y @orgo-ai/mcp` by default. You can override the
 bridge with:

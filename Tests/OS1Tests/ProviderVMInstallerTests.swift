@@ -161,11 +161,23 @@ struct ProviderVMInstallerTests {
         try process.run()
         process.waitUntilExit()
 
+        let stdoutText = String(
+            data: (try? stdout.fileHandleForReading.readToEnd()) ?? Data(),
+            encoding: .utf8
+        )?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let stderrText = String(
             data: (try? stderr.fileHandleForReading.readToEnd()) ?? Data(),
             encoding: .utf8
         )?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        #expect(process.terminationStatus == 0, "installer exited \(process.terminationStatus): \(stderrText)")
+        #expect(
+            process.terminationStatus == 0,
+            "installer exited \(process.terminationStatus): stdout=\(stdoutText) stderr=\(stderrText)"
+        )
+        if let result = try? parseJSONLine(stdoutText) {
+            #expect(result["success"] as? Bool == true, "installer reported failure: \(stdoutText)")
+        } else {
+            Issue.record("installer did not emit a JSON result: \(stdoutText)")
+        }
 
         let hermesDir = tmp.appendingPathComponent(".hermes")
         let configData = try Data(contentsOf: hermesDir.appendingPathComponent("config.yaml"))
@@ -184,6 +196,15 @@ struct ProviderVMInstallerTests {
         }
 
         return InstallerOutcome(config: parsed, authJSON: auth, envContent: envContent)
+    }
+
+    private func parseJSONLine(_ text: String) throws -> [String: Any] {
+        let line = text
+            .split(separator: "\n", omittingEmptySubsequences: true)
+            .last
+            .map(String.init) ?? ""
+        let data = Data(line.utf8)
+        return (try JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
     }
 
     /// Round-trips YAML → Python → JSON so we don't take a Swift YAML
