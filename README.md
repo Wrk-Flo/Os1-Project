@@ -110,6 +110,19 @@ existing files under `~/.hermes/backups`, and reports status without printing
 secrets. See [`docs/local-oss-runtime.md`](docs/local-oss-runtime.md) for the
 full Azure-disabled local runtime runbook.
 
+For longer local business-operation sessions, use
+[`docs/local-ops-24-7.md`](docs/local-ops-24-7.md). It covers per-user
+LaunchAgents for Ollama and OS1 health checks, local logs, restart commands,
+health-only monitoring when Ollama is already managed by `Ollama.app`, and the
+remaining blockers before public production distribution. For limited disk
+environments, use [`docs/local-storage.md`](docs/local-storage.md) and the
+storage helpers:
+
+```sh
+scripts/os1-storage-report.sh
+scripts/os1-clean-storage.sh --all
+```
+
 ### SSH or Azure VM
 
 1. Open the **Connections** tab → click **Add Host**

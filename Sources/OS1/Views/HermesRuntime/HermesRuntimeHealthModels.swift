@@ -173,6 +173,7 @@ struct HermesRuntimeComponentStatus: Codable, Equatable, Identifiable, Sendable 
         case sessions
         case skills
         case cron
+        case models
         case gateway
         case cua
 
@@ -188,6 +189,8 @@ struct HermesRuntimeComponentStatus: Codable, Equatable, Identifiable, Sendable 
                 return "Skills"
             case .cron:
                 return "Cron"
+            case .models:
+                return "Models"
             case .gateway:
                 return "Gateway"
             case .cua:
@@ -205,6 +208,8 @@ struct HermesRuntimeComponentStatus: Codable, Equatable, Identifiable, Sendable 
                 return "wand.and.stars"
             case .cron:
                 return "clock.arrow.circlepath"
+            case .models:
+                return "cpu"
             case .gateway:
                 return "point.3.connected.trianglepath.dotted"
             case .cua:
@@ -317,7 +322,16 @@ struct HermesRuntimeHealthSnapshot: Codable, Equatable, Sendable {
             return .degraded
         }
 
-        if cli.level == .unknown || hermesHome.level == .unknown || componentLevels.contains(.unknown) {
+        let readinessBlockingUnknowns: Set<HermesRuntimeComponentStatus.Kind> = [
+            .memory,
+            .sessions,
+            .skills,
+            .cron,
+            .models,
+        ]
+        if cli.level == .unknown ||
+            hermesHome.level == .unknown ||
+            normalizedComponents.contains(where: { $0.level == .unknown && readinessBlockingUnknowns.contains($0.kind) }) {
             return .unknown
         }
 
@@ -330,6 +344,283 @@ struct HermesRuntimeHealthSnapshot: Codable, Equatable, Sendable {
 
     var attentionComponentCount: Int {
         normalizedComponents.filter { $0.level == .degraded || $0.level == .unavailable }.count
+    }
+}
+
+extension HermesRuntimeHealthSnapshot {
+    init(runtimeStatus status: HermesRuntimeStatus) {
+        self.init(
+            cli: HermesRuntimeCLIStatus(runtimeStatus: status),
+            hermesHome: HermesRuntimeHomeStatus(runtimeHome: status.home),
+            activeSelection: HermesRuntimeActiveSelection(runtimeModel: status.model),
+            components: HermesRuntimeComponentStatus.components(runtimeStatus: status),
+            scopeLabel: "Local Hermes runtime",
+            checkedAt: Date()
+        )
+    }
+}
+
+private extension HermesRuntimeCLIStatus {
+    init(runtimeStatus status: HermesRuntimeStatus) {
+        guard let executable = status.executable else {
+            self = .missing(detail: "Hermes CLI was not found on PATH or known fallback locations.")
+            return
+        }
+
+        if status.version?.isAvailable == true {
+            self = .available(
+                version: status.version?.label,
+                executablePath: executable.path,
+                detail: executable.source.displayName
+            )
+        } else {
+            self.init(
+                level: .degraded,
+                executablePath: executable.path,
+                detail: status.version?.stderr.nilIfBlank ?? "Hermes CLI was found, but version detection did not complete."
+            )
+        }
+    }
+}
+
+private extension HermesRuntimeHomeStatus {
+    init(runtimeHome home: HermesRuntimeHome) {
+        if home.exists {
+            self = .available(path: home.path, source: home.source.displayName)
+        } else {
+            self = .missing(path: home.path, detail: "Directory does not exist.")
+        }
+    }
+}
+
+private extension HermesRuntimeActiveSelection {
+    init(runtimeModel model: HermesRuntimeModelConfig?) {
+        guard let model else {
+            self.init(detail: "No model configuration was discovered.")
+            return
+        }
+
+        self.init(
+            providerName: model.provider,
+            modelName: model.defaultModel,
+            source: model.sourcePath,
+            detail: model.baseURL
+        )
+    }
+}
+
+private extension HermesRuntimeComponentStatus {
+    static func components(runtimeStatus status: HermesRuntimeStatus) -> [HermesRuntimeComponentStatus] {
+        guard status.home.exists else {
+            return Kind.allCases.map { kind in
+                .missing(kind, detail: "HERMES_HOME is not available.")
+            }
+        }
+
+        return [
+            memoryStatus(runtimeStatus: status),
+            sessionsStatus(runtimeStatus: status),
+            directoryStatus(
+                runtimeStatus: status,
+                kind: .skills,
+                fileKind: .skillsDirectory,
+                missingDetail: "Skills directory does not exist."
+            ),
+            directoryStatus(
+                runtimeStatus: status,
+                kind: .cron,
+                fileKind: .cronDirectory,
+                missingDetail: "Cron directory does not exist."
+            ),
+            modelsStatus(runtimeStatus: status),
+            gatewayStatus(runtimeStatus: status),
+            HermesRuntimeComponentStatus(
+                kind: .cua,
+                value: "Optional",
+                detail: "CUA remains opt-in; run Hermes computer-use setup before enabling local computer sessions."
+            ),
+        ]
+    }
+
+    static func memoryStatus(runtimeStatus status: HermesRuntimeStatus) -> HermesRuntimeComponentStatus {
+        guard let memory = status.config.file(.memoryFile) else {
+            return HermesRuntimeComponentStatus(
+                kind: .memory,
+                detail: "Memory file was not included in the runtime probe."
+            )
+        }
+
+        guard memory.exists else {
+            return HermesRuntimeComponentStatus(
+                kind: .memory,
+                level: .degraded,
+                value: "Not created",
+                detail: "Hermes can create MEMORY.md after the first local memory write.",
+                path: memory.path
+            )
+        }
+
+        return HermesRuntimeComponentStatus(
+            kind: .memory,
+            level: memory.isReadable ? .ready : .degraded,
+            value: memory.isReadable ? "Readable" : "Exists but is not readable",
+            path: memory.path
+        )
+    }
+
+    static func sessionsStatus(runtimeStatus status: HermesRuntimeStatus) -> HermesRuntimeComponentStatus {
+        directoryStatus(
+            runtimeStatus: status,
+            kind: .sessions,
+            fileKind: .sessionsDirectory,
+            missingDetail: "Sessions directory does not exist."
+        )
+    }
+
+    static func directoryStatus(
+        runtimeStatus status: HermesRuntimeStatus,
+        kind: Kind,
+        fileKind: HermesRuntimeConfigFileKind,
+        missingDetail: String
+    ) -> HermesRuntimeComponentStatus {
+        guard let directory = status.config.file(fileKind) else {
+            return HermesRuntimeComponentStatus(
+                kind: kind,
+                detail: "Directory was not included in the runtime probe."
+            )
+        }
+
+        guard directory.exists else {
+            return .missing(kind, detail: missingDetail, path: directory.path)
+        }
+
+        guard directory.isDirectory else {
+            return HermesRuntimeComponentStatus(
+                kind: kind,
+                level: .degraded,
+                value: "Path is not a directory",
+                path: directory.path
+            )
+        }
+
+        return HermesRuntimeComponentStatus(
+            kind: kind,
+            level: directory.isReadable ? .ready : .degraded,
+            value: directory.isReadable ? "Readable" : "Exists but is not readable",
+            path: directory.path
+        )
+    }
+
+    static func modelsStatus(runtimeStatus status: HermesRuntimeStatus) -> HermesRuntimeComponentStatus {
+        guard !status.localModelServers.isEmpty else {
+            return HermesRuntimeComponentStatus(
+                kind: .models,
+                detail: "Local model servers were not probed."
+            )
+        }
+
+        let available = status.localModelServers.filter { $0.availability == .available }
+        if !available.isEmpty {
+            return .ready(
+                .models,
+                value: "\(available.count) available",
+                detail: available.map(\.server.name).joined(separator: ", ")
+            )
+        }
+
+        let details = status.localModelServers.map { serverStatus in
+            if let statusCode = serverStatus.statusCode {
+                return "\(serverStatus.server.name): HTTP \(statusCode)"
+            }
+            if let message = serverStatus.message?.nilIfBlank {
+                return "\(serverStatus.server.name): \(message)"
+            }
+            return "\(serverStatus.server.name): \(serverStatus.availability.rawValue)"
+        }
+
+        return HermesRuntimeComponentStatus(
+            kind: .models,
+            level: .degraded,
+            value: "No local model server reachable",
+            detail: details.joined(separator: "; ")
+        )
+    }
+
+    static func gatewayStatus(runtimeStatus status: HermesRuntimeStatus) -> HermesRuntimeComponentStatus {
+        guard let gateway = status.config.file(.gatewayStateFile) else {
+            return HermesRuntimeComponentStatus(
+                kind: .gateway,
+                detail: "Gateway state file was not included in the runtime probe."
+            )
+        }
+
+        guard gateway.exists else {
+            return HermesRuntimeComponentStatus(
+                kind: .gateway,
+                value: "No gateway state",
+                detail: "Gateway is not running or has not written state.",
+                path: gateway.path
+            )
+        }
+
+        guard gateway.isReadable,
+              let raw = try? String(contentsOfFile: gateway.path, encoding: .utf8)
+        else {
+            return HermesRuntimeComponentStatus(
+                kind: .gateway,
+                level: .degraded,
+                value: "State unreadable",
+                path: gateway.path
+            )
+        }
+
+        guard let snapshot = GatewayStateSnapshot.decode(from: raw) else {
+            return HermesRuntimeComponentStatus(
+                kind: .gateway,
+                level: .degraded,
+                value: "State invalid",
+                path: gateway.path
+            )
+        }
+
+        if snapshot.isRunning {
+            return .ready(
+                .gateway,
+                value: "Running",
+                detail: snapshot.updated_at,
+                path: gateway.path
+            )
+        }
+
+        return HermesRuntimeComponentStatus(
+            kind: .gateway,
+            level: .degraded,
+            value: snapshot.gateway_state?.nilIfBlank ?? "Not running",
+            detail: snapshot.exit_reason?.nilIfBlank,
+            path: gateway.path
+        )
+    }
+}
+
+private extension HermesRuntimeExecutableSource {
+    var displayName: String {
+        switch self {
+        case .path:
+            return "PATH"
+        case .fallback:
+            return "Fallback path"
+        }
+    }
+}
+
+private extension HermesRuntimeHomeSource {
+    var displayName: String {
+        switch self {
+        case .environment:
+            return "HERMES_HOME"
+        case .default:
+            return "Default ~/.hermes"
+        }
     }
 }
 

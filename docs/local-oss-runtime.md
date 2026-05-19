@@ -142,6 +142,33 @@ OLLAMA_MODEL=qwen2.5-coder:3b scripts/ollama-task.sh "Summarize docs/local-oss-r
 Tune bounded local tasks with `OLLAMA_NUM_PREDICT` and
 `OLLAMA_TEMPERATURE`.
 
+## 24/7 Local Operations
+
+For long-running local business operations, keep Azure disabled and supervise
+only local services. The local ops runbook installs per-user LaunchAgents for
+Ollama and periodic OS1 health checks without `sudo`:
+
+```sh
+scripts/install-local-ops-launchd.sh
+scripts/install-local-ops-launchd.sh --apply
+```
+
+If `Ollama.app` is already keeping the model server alive, use
+`scripts/install-local-ops-launchd.sh --health-only --apply` so OS1 monitors
+the stack without starting a second `ollama serve`.
+
+See [`docs/local-ops-24-7.md`](local-ops-24-7.md) for logs, restart commands,
+model fallback, and production blockers.
+
+For limited internal disk space, keep build outputs disposable and move large
+model caches to an external SSD. See [`docs/local-storage.md`](local-storage.md)
+and run:
+
+```sh
+scripts/os1-storage-report.sh
+scripts/os1-clean-storage.sh --all
+```
+
 ## Azure Restoration
 
 When Azure access is restored, keep the first pass read-only:

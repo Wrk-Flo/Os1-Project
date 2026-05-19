@@ -46,9 +46,13 @@ enum HermesRuntimeConfigFileKind: String, CaseIterable, Equatable, Sendable {
     case env
     case authJSON
     case updateCheck
+    case memoryFile
     case sessionsDirectory
+    case skillsDirectory
+    case cronDirectory
     case logsDirectory
     case profilesDirectory
+    case gatewayStateFile
 
     var relativePath: String {
         switch self {
@@ -60,12 +64,20 @@ enum HermesRuntimeConfigFileKind: String, CaseIterable, Equatable, Sendable {
             return "auth.json"
         case .updateCheck:
             return ".update_check"
+        case .memoryFile:
+            return "memories/MEMORY.md"
         case .sessionsDirectory:
             return "sessions"
+        case .skillsDirectory:
+            return "skills"
+        case .cronDirectory:
+            return "cron"
         case .logsDirectory:
             return "logs"
         case .profilesDirectory:
             return "profiles"
+        case .gatewayStateFile:
+            return "gateway_state.json"
         }
     }
 }
