@@ -21,7 +21,27 @@ Orgo is optional for this plan. The no-Orgo path is Azure VM over OS1's
 existing SSH transport first, then optional Cua planning for governed visual
 computer sessions. Neither path requires Orgo credentials.
 
-## Current Azure Inventory Observed
+## Current Safety Posture
+
+As of 2026-05-18, Azure subscription and Key Vault access should be treated as
+unavailable until a read-only preflight proves otherwise. The current default is
+local OSS fallback, not Azure mutation:
+
+```sh
+scripts/azure/os1-vm.sh local-fallback
+scripts/azure/os1-vm.sh preflight
+scripts/azure/sync-os1-secrets.py --dry-run
+```
+
+Azure write commands are intentionally blocked unless
+`OS1_AZURE_ALLOW_MUTATIONS=1` is set and the subscription state is `Enabled`.
+Secret sync is check-only unless `scripts/azure/sync-os1-secrets.py --apply`
+or `OS1_AZURE_ALLOW_SECRET_SYNC=1` is used. Do not set those opt-ins while the
+subscription is disabled, billing-blocked, or Key Vault data-plane reads fail.
+
+Use `docs/local-oss-runtime.md` for the Azure-free runtime path.
+
+## Historical Azure Inventory Observed
 
 Azure CLI is authenticated to:
 
@@ -89,7 +109,9 @@ Azure resources created for this project are isolated in `os1-project-rg`. Exist
 
 ## Closest Immediate Match: Azure VM Over SSH
 
-This is the immediate no-Orgo path. It requires no source changes if an Azure VM is reachable through normal non-interactive SSH from the Mac.
+This remains the immediate no-Orgo Azure path after Azure access is restored.
+It requires no source changes if an Azure VM is reachable through normal
+non-interactive SSH from the Mac.
 
 1. Install Hermes Agent on the Azure VM.
 2. Make sure `python3` is on the non-interactive SSH PATH.
@@ -267,7 +289,23 @@ Later helper-backed Azure profile:
 
 ## Practical Next Step
 
-Use `os1-hermes-dev` as the first smoke target. Add it as an SSH host in OS1:
+While Azure is disabled, keep OS1 usable through the local OSS runtime:
+
+```sh
+ollama serve
+ollama pull qwen2.5-coder:3b
+scripts/configure-local-oss-models.sh ollama
+```
+
+When Azure is restored, run read-only checks first:
+
+```sh
+scripts/azure/os1-vm.sh preflight
+scripts/azure/sync-os1-secrets.py --dry-run
+```
+
+Only after those checks are healthy, use `os1-hermes-dev` as the first smoke
+target. Add it as an SSH host in OS1:
 
 - Alias: `OS1 Hermes Dev`
 - Host: `20.115.128.223`

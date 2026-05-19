@@ -3,6 +3,7 @@ import Foundation
 enum AppSection: String, CaseIterable, Identifiable {
     case connections
     case overview
+    case runtime
     case files
     case sessions
     case cronjobs
@@ -30,6 +31,8 @@ enum AppSection: String, CaseIterable, Identifiable {
             "Host"
         case .overview:
             "Overview"
+        case .runtime:
+            "Runtime"
         case .files:
             "Files"
         case .sessions:
@@ -67,6 +70,8 @@ enum AppSection: String, CaseIterable, Identifiable {
             "server.rack"
         case .overview:
             "waveform.path.ecg"
+        case .runtime:
+            "memorychip"
         case .files:
             "doc.text"
         case .sessions:

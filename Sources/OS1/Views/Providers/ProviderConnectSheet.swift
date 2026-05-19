@@ -22,7 +22,11 @@ struct ProviderConnectSheet: View {
                 divider
             }
 
-            pasteKeySection
+            if entry.requiresAPIKey {
+                pasteKeySection
+            } else {
+                localProviderSection
+            }
 
             if let error = viewModel.connectFlowError {
                 HermesValidationMessage(text: error)
@@ -147,6 +151,19 @@ struct ProviderConnectSheet: View {
         }
     }
 
+    private var localProviderSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(L10n.string("Local provider"))
+                .os1Style(theme.typography.label)
+                .foregroundStyle(theme.palette.onCoralMuted)
+
+            Text(L10n.string("No API key is required. OS1 will register this OpenAI-compatible local endpoint and use it from the selected host."))
+                .os1Style(theme.typography.smallCaps)
+                .foregroundStyle(theme.palette.onCoralMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
     private var footer: some View {
         HStack(spacing: 10) {
             Spacer()
@@ -171,11 +188,11 @@ struct ProviderConnectSheet: View {
                         Text(L10n.string(viewModel.connectFlowState == .validating ? "Validating…" : "Saving…"))
                     }
                 } else {
-                    Text(L10n.string("Save key"))
+                    Text(L10n.string(entry.requiresAPIKey ? "Save key" : "Enable local provider"))
                 }
             }
             .buttonStyle(.os1Primary)
-            .disabled(viewModel.apiKeyDraft.trimmingCharacters(in: .whitespaces).isEmpty
+            .disabled((entry.requiresAPIKey && viewModel.apiKeyDraft.trimmingCharacters(in: .whitespaces).isEmpty)
                       || viewModel.connectFlowState == .validating
                       || viewModel.connectFlowState == .saving)
         }

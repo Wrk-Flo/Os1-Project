@@ -129,6 +129,36 @@ struct ProviderVMInstallerTests {
         #expect(outcome.authJSON["active_provider"] as? String == "openai")
     }
 
+    @Test
+    func localOpenSourceProvidersWriteLoopbackCustomProviders() throws {
+        let expected: [(slug: String, configName: String, baseURL: String, envVar: String, model: String)] = [
+            ("ollama", "ollama", "http://127.0.0.1:11434/v1", "OLLAMA_API_KEY", "qwen2.5-coder:3b"),
+            ("llama-cpp", "llama_cpp", "http://127.0.0.1:8080/v1", "LLAMA_CPP_API_KEY", "Qwen2.5-Coder-3B-Instruct-Q4_K_M.gguf"),
+            ("lm-studio", "lm_studio", "http://127.0.0.1:1234/v1", "LM_STUDIO_API_KEY", "local-model"),
+        ]
+
+        for item in expected {
+            let provider = try #require(ProviderCatalog.entry(for: item.slug))
+            let outcome = try runInstallerScript(
+                provider: provider,
+                action: .install(apiKey: "local-no-api-key-required", activateModel: item.model)
+            )
+
+            let model = try #require(outcome.config["model"] as? [String: Any])
+            #expect(model["provider"] as? String == item.configName)
+            #expect(model["default"] as? String == item.model)
+            #expect(model["base_url"] as? String == item.baseURL)
+
+            let providers = try #require(outcome.config["custom_providers"] as? [[String: Any]])
+            let entry = try #require(providers.first(where: { ($0["name"] as? String) == item.configName }))
+            #expect(entry["base_url"] as? String == item.baseURL)
+            #expect(entry["key_env"] as? String == item.envVar)
+            #expect(outcome.envContent.contains("\(item.envVar)="))
+            #expect(outcome.envContent.contains("local-no-api-key-required"))
+            #expect(outcome.authJSON["active_provider"] as? String == item.configName)
+        }
+    }
+
     private struct InstallerOutcome {
         let config: [String: Any]
         let authJSON: [String: Any]

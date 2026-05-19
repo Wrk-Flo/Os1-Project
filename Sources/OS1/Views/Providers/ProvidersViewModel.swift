@@ -145,7 +145,7 @@ final class ProvidersViewModel: ObservableObject {
     func saveAPIKey() async {
         guard let entry = selectedProvider else { return }
         let trimmed = apiKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
+        guard !trimmed.isEmpty || !entry.requiresAPIKey else {
             connectFlowState = .failed(message: "Paste your API key first.")
             return
         }
@@ -156,7 +156,7 @@ final class ProvidersViewModel: ObservableObject {
         do {
             let validation = try await validationClient.validate(apiKey: trimmed, against: entry)
             connectFlowState = .saving
-            try saveToKeychain(slug: entry.slug, apiKey: trimmed)
+            try saveToKeychain(slug: entry.slug, apiKey: entry.requiresAPIKey ? trimmed : Self.localProviderPlaceholderKey)
             modelsBySlug[entry.slug] = validation.models
             connectFlowState = .validated
             apiKeyDraft = ""
@@ -224,7 +224,7 @@ final class ProvidersViewModel: ObservableObject {
 
     func installOnHost(slug: String, connection: ConnectionProfile, activateModel: String?) async {
         guard let entry = ProviderCatalog.entry(for: slug) else { return }
-        guard let apiKey = credentialStore.loadAPIKey(slug: slug, forProfileId: currentProfileId) else {
+        guard let apiKey = credentialStore.loadAPIKey(slug: slug, forProfileId: currentProfileId) ?? (entry.requiresAPIKey ? nil : Self.localProviderPlaceholderKey) else {
             topLevelError = "Add an API key for \(entry.displayName) first."
             return
         }
@@ -307,7 +307,7 @@ final class ProvidersViewModel: ObservableObject {
 
     func refreshModels(slug: String) async {
         guard let entry = ProviderCatalog.entry(for: slug) else { return }
-        guard let apiKey = credentialStore.loadAPIKey(slug: slug, forProfileId: currentProfileId) else {
+        guard let apiKey = credentialStore.loadAPIKey(slug: slug, forProfileId: currentProfileId) ?? (entry.requiresAPIKey ? nil : Self.localProviderPlaceholderKey) else {
             topLevelError = "Add an API key for \(entry.displayName) first."
             return
         }
@@ -343,6 +343,8 @@ final class ProvidersViewModel: ObservableObject {
             try credentialStore.saveAsDefault(apiKey, slug: slug)
         }
     }
+
+    private static let localProviderPlaceholderKey = "local-no-api-key-required"
 
     private func clearFromKeychain(slug: String) throws {
         if let profileId = currentProfileId,

@@ -35,8 +35,9 @@ struct ProviderCatalogTests {
     @Test
     func everyEntryHasParsableURLs() {
         for entry in ProviderCatalog.entries {
-            #expect(entry.baseURL.scheme == "https",
-                    "\(entry.slug) base URL should be https")
+            let isLocalHTTP = entry.baseURL.scheme == "http" && ["127.0.0.1", "localhost"].contains(entry.baseURL.host ?? "")
+            #expect(entry.baseURL.scheme == "https" || isLocalHTTP,
+                    "\(entry.slug) base URL should be https or loopback http")
             #expect(entry.dashboardURL.scheme == "https",
                     "\(entry.slug) dashboard URL should be https")
             if let docs = entry.docsURL {
@@ -51,6 +52,36 @@ struct ProviderCatalogTests {
         let expected: Set<String> = ["anthropic", "openrouter", "openai", "fireworks", "kimi", "zai"]
         let actual = Set(ProviderCatalog.entries.map(\.slug))
         #expect(expected.isSubset(of: actual), "Missing one of the 6 core providers. Got: \(actual)")
+    }
+
+    @Test
+    func localOpenSourceProvidersAreKeylessCustomProviders() throws {
+        let expected: [(slug: String, configName: String, baseURL: String, envVar: String)] = [
+            ("ollama", "ollama", "http://127.0.0.1:11434/v1", "OLLAMA_API_KEY"),
+            ("llama-cpp", "llama_cpp", "http://127.0.0.1:8080/v1", "LLAMA_CPP_API_KEY"),
+            ("lm-studio", "lm_studio", "http://127.0.0.1:1234/v1", "LM_STUDIO_API_KEY"),
+        ]
+
+        for item in expected {
+            let entry = try #require(ProviderCatalog.entry(for: item.slug))
+            #expect(!entry.requiresAPIKey)
+            #expect(!entry.supportsOAuth)
+            #expect(entry.keyPrefixHint == "No key required")
+            #expect(entry.envVar == item.envVar)
+            #expect(entry.baseURL.absoluteString == item.baseURL)
+
+            if case .customProvider(let name) = entry.kind {
+                #expect(name == item.configName)
+            } else {
+                Issue.record("\(entry.displayName) should be a custom provider")
+            }
+
+            if case .skip(let reason) = entry.validation {
+                #expect(reason.contains("does not require an API key"))
+            } else {
+                Issue.record("\(entry.displayName) should skip API-key validation")
+            }
+        }
     }
 
     @Test

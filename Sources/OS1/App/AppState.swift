@@ -34,6 +34,9 @@ final class AppState: ObservableObject {
     @Published var hermesInstallStatus: HermesInstallStatus = .idle
     @Published var hermesUpdateAvailability: HermesUpdateAvailability = .unknown
     @Published var hermesUpdateStatus: HermesUpdateStatus = .idle
+    @Published var hermesRuntimeStatus: HermesRuntimeStatus?
+    @Published var hermesRuntimeError: String?
+    @Published var isRefreshingHermesRuntimeStatus = false
     @Published var activeConnectionID: UUID?
     @Published var selectedSessionID: String?
     @Published var sessions: [SessionSummary] = []
@@ -111,6 +114,7 @@ final class AppState: ObservableObject {
     let cuaCredentialStore: CuaCredentialStore
     let computerSessionService: ComputerSessionService
     let hermesUpdater: HermesUpdater
+    let hermesRuntimeService: HermesRuntimeService
     let transport: any RemoteTransport
     let remoteHermesService: RemoteHermesService
     let fileEditorService: FileEditorService
@@ -181,6 +185,7 @@ final class AppState: ObservableObject {
         )
         let transport = MultiplexedRemoteTransport(ssh: sshTransport, orgo: orgoTransport)
         let hermesUpdater = HermesUpdater(orgoTransport: orgoTransport, multiplexed: transport)
+        let hermesRuntimeService = HermesRuntimeService()
 
         self.connectionStore = connectionStore
         self.sshTransport = sshTransport
@@ -192,6 +197,7 @@ final class AppState: ObservableObject {
         self.cuaCredentialStore = cuaCredentialStore
         self.computerSessionService = computerSessionService
         self.hermesUpdater = hermesUpdater
+        self.hermesRuntimeService = hermesRuntimeService
         self.transport = transport
         self.remoteHermesService = RemoteHermesService(transport: transport)
         self.fileEditorService = FileEditorService(transport: transport)
@@ -419,11 +425,16 @@ final class AppState: ObservableObject {
     }
 
     var canRefreshCurrentSection: Bool {
+        if selectedSection == .runtime {
+            return !isRefreshingHermesRuntimeStatus
+        }
         guard activeConnection != nil else { return false }
 
         switch selectedSection {
         case .overview:
             return !isRefreshingOverview && !isBusy
+        case .runtime:
+            return !isRefreshingHermesRuntimeStatus
         case .sessions:
             return !isLoadingSessions && !isRefreshingSessions
         case .cronjobs:
@@ -448,7 +459,7 @@ final class AppState: ObservableObject {
     }
 
     func isSectionAvailable(_ section: AppSection) -> Bool {
-        if section == .connections { return true }
+        if section == .connections || section == .runtime { return true }
         guard let connection = activeConnection else { return false }
         if section == .desktop {
             return connection.capabilities.supportsVisualDesktop
@@ -514,6 +525,8 @@ final class AppState: ObservableObject {
         switch selectedSection {
         case .overview:
             await refreshOverview(manual: true)
+        case .runtime:
+            await refreshHermesRuntimeStatus(manual: true)
         case .sessions:
             await refreshSessions(query: sessionSearchQuery)
         case .cronjobs:
@@ -706,6 +719,28 @@ final class AppState: ObservableObject {
             overview = nil
             overviewError = error.localizedDescription
             setStatusMessage(L10n.string("Unable to refresh remote discovery"))
+        }
+    }
+
+    func refreshHermesRuntimeStatus(manual: Bool = false) async {
+        guard !isRefreshingHermesRuntimeStatus else { return }
+        isRefreshingHermesRuntimeStatus = true
+        if manual {
+            setStatusMessage(L10n.string("Refreshing local Hermes runtime…"))
+        }
+        defer {
+            isRefreshingHermesRuntimeStatus = false
+        }
+
+        hermesRuntimeError = nil
+        let status = await hermesRuntimeService.status()
+        hermesRuntimeStatus = status
+
+        if manual {
+            let message = status.isAvailable
+                ? L10n.string("Local Hermes runtime refreshed.")
+                : L10n.string("Local Hermes runtime is not installed.")
+            setStatusMessage(message)
         }
     }
 
@@ -2167,6 +2202,8 @@ final class AppState: ObservableObject {
         switch section {
         case .overview:
             Task { await refreshOverview() }
+        case .runtime:
+            Task { await refreshHermesRuntimeStatus() }
         case .files:
             Task { await ensureInitialFileLoads() }
         case .sessions:
@@ -2229,6 +2266,8 @@ final class AppState: ObservableObject {
             // Desktop reconnects on its own when the active connection changes.
             // Mail and Connectors re-evaluate setup state on their own.
             break
+        case .runtime:
+            await refreshHermesRuntimeStatus()
         case .files:
             await ensureInitialFileLoads()
         case .sessions:

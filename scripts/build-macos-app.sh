@@ -76,6 +76,12 @@ derive_version() {
     tag="$(git -C "$ROOT_DIR" describe --tags --exact-match 2>/dev/null || true)"
     if [[ -n "$tag" ]]; then
         printf '%s\n' "${tag#v}"
+        return
+    fi
+
+    tag="$(git -C "$ROOT_DIR" describe --tags --abbrev=0 2>/dev/null || true)"
+    if [[ -n "$tag" ]]; then
+        printf '%s\n' "${tag#v}"
     fi
 }
 
@@ -120,7 +126,7 @@ pick_codesign_identity() {
 
     if [[ "${OS1_AUTO_CODESIGN:-}" == "1" ]]; then
         security find-identity -v -p codesigning 2>/dev/null \
-            | awk -F\" '/Apple Development:/ { print $2; exit }'
+            | awk -F\" '/Developer ID Application:/ { print $2; exit } /Apple Development:/ && !fallback { fallback=$2 } END { if (fallback) print fallback }'
     fi
 }
 
@@ -131,7 +137,18 @@ sign_bundle() {
 
     if [[ -n "$identity" ]]; then
         echo "Signing $APP_DISPLAY_NAME with identity: $identity"
-        codesign --force --deep --sign "$identity" "$BUNDLE_PATH" >/dev/null
+        local codesign_args=(
+            --force
+            --deep
+            --sign "$identity"
+        )
+        if [[ "${OS1_CODESIGN_RUNTIME:-1}" == "1" ]]; then
+            codesign_args+=(--options runtime)
+        fi
+        if [[ "${OS1_CODESIGN_TIMESTAMP:-1}" == "1" ]]; then
+            codesign_args+=(--timestamp)
+        fi
+        codesign "${codesign_args[@]}" "$BUNDLE_PATH" >/dev/null
         SIGNING_DESCRIPTION="signed with $identity"
     else
         echo "Signing $APP_DISPLAY_NAME ad-hoc with stable designated requirement: identifier $bundle_identifier"

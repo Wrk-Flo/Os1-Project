@@ -13,7 +13,10 @@ optional managed cloud-computer provider if you already have it.
 ## What you get
 
 - **SSH-first workspace access** for hosts you already control:
-  another Mac, a Raspberry Pi, a VPS, or an Azure VM.
+  another Mac, a Raspberry Pi, a VPS, or an Azure VM when Azure is available.
+- **Local open-source model path** with Ollama or llama.cpp exposed as
+  OpenAI-compatible Hermes providers. This is the default fallback when
+  Azure/Key Vault services are unavailable.
 - **Real interactive shell** for the active host. SSH uses the native
   local terminal path; Orgo uses its optional websocket terminal path.
 - **Optional Orgo managed computers**: if you have an Orgo account, OS1
@@ -31,9 +34,13 @@ optional managed cloud-computer provider if you already have it.
 - macOS 14 or newer (Apple Silicon or Intel — universal build)
 - One of:
   - A host you already reach with `ssh` from this Mac without
-    interactive prompts, including an Azure VM, OR
+    interactive prompts, including this Mac, another local machine, a VPS,
+    or an Azure VM when Azure is available, OR
   - An optional **Orgo account** with an API key if you want Orgo's
     managed cloud-computer flow.
+- For the no-cloud model path: Ollama on `127.0.0.1:11434`,
+  llama.cpp on `127.0.0.1:8080`, or LM Studio on `127.0.0.1:1234`
+  with an OpenAI-compatible `/v1` endpoint.
 
 For SSH connections, the host needs `python3` on the non-interactive SSH
 PATH and Hermes already installed. For Orgo connections, the app handles
@@ -52,19 +59,56 @@ another profile.
 
 Planning for the provider-neutral Computer Session lane lives in
 [`docs/computer-session-provider-plan.md`](docs/computer-session-provider-plan.md).
-It covers future Cua/E2B-style disposable desktop and sandbox providers
-without changing the current Orgo and SSH setup flow.
+It now includes disabled experimental Cua plumbing for approval-gated one-shot
+computer sessions. Cua is not a host transport, live desktop provider, or
+Realtime adapter yet, and it does not change the current Orgo and SSH setup
+flow.
 
 ## Install
 
-Download the latest `OS1.app.zip` from the GitHub Releases page,
-unzip it, drag `OS1.app` into `/Applications`, and launch.
-
-The build is universal (Apple Silicon + Intel) and ad-hoc signed.
+Public distribution is blocked until Developer ID signing and notarization
+are configured. For now, build locally with `./scripts/build-macos-app.sh`;
+the local artifact at `dist/OS1.app` is universal and ad-hoc signed.
 On first launch macOS may say it can't verify the developer — right-click
 the app, choose Open, and confirm.
 
 ## Setup
+
+### Local OSS Models
+
+Use this path while Azure services and Key Vault are unavailable.
+
+1. Start a local provider:
+
+   ```sh
+   ollama serve
+   ollama pull qwen2.5-coder:3b
+   ```
+
+   Or run llama.cpp server on `127.0.0.1:8080` or LM Studio on
+   `127.0.0.1:1234`, each with an OpenAI-compatible `/v1` endpoint.
+
+2. Configure the local Hermes profile on this Mac:
+
+   ```sh
+   scripts/configure-local-oss-models.sh ollama
+   # or:
+   scripts/configure-local-oss-models.sh llama-cpp
+   # or:
+   scripts/configure-local-oss-models.sh lm-studio
+   ```
+
+3. In OS1, open **Providers** and enable **Ollama Local**,
+   **llama.cpp Local**, or **LM Studio Local**. These providers do not
+   require API keys. Hermes Agent itself is installed separately; OS1 and
+   the helper only configure the selected provider. For CUA/Computer Use
+   on that agent, run `hermes computer-use install` in the Hermes
+   environment.
+
+The script writes only local Hermes config files under `~/.hermes`, backs up
+existing files under `~/.hermes/backups`, and reports status without printing
+secrets. See [`docs/local-oss-runtime.md`](docs/local-oss-runtime.md) for the
+full Azure-disabled local runtime runbook.
 
 ### SSH or Azure VM
 
@@ -75,7 +119,8 @@ the app, choose Open, and confirm.
 
 For the no-Orgo Azure path, use the SSH profile from
 [`docs/azure-operations.md`](docs/azure-operations.md) once the VM is
-running and reachable from this Mac.
+running and reachable from this Mac. If Azure is disabled, keep this path
+parked and use the local OSS model path above.
 
 ### Orgo VM (optional)
 
@@ -152,8 +197,24 @@ requirement for `com.elementsoftware.os1`, which gives macOS a stable
 local app identity so privacy grants such as microphone access can
 survive rebuilds. For a stronger certificate-backed identity, set
 `OS1_CODESIGN_IDENTITY` / `HERMES_CODESIGN_IDENTITY`, or set
-`OS1_AUTO_CODESIGN=1` to use the first available `Apple Development`
-identity.
+`OS1_AUTO_CODESIGN=1` to prefer the first available `Developer ID
+Application` identity and fall back to `Apple Development`.
+
+Public distribution remains blocked until Developer ID signing and
+notarization are configured. To produce a public-ready archive, opt into
+notarization after configuring Apple notary credentials in Keychain or an
+App Store Connect API key:
+
+```sh
+OS1_CODESIGN_IDENTITY="Developer ID Application: Example Team (TEAMID)" \
+OS1_NOTARIZE=1 \
+OS1_NOTARY_KEYCHAIN_PROFILE=os1-notary \
+./scripts/package-github-release.sh
+```
+
+The notarization path requires a Developer ID Application signature,
+submits `dist/OS1.app.zip`, staples the ticket to `dist/OS1.app`, then
+recreates the final zip and checksum.
 
 After the boot animation completes, the hidden WebRTC view requests
 microphone access, opens the `oai-events` data channel, registers a sample
@@ -237,5 +298,5 @@ License: [MIT](LICENSE). All upstream copyrights are preserved.
 ## Status
 
 This is an early build. Translation polish, GitHub Pages site, and
-signing/notarization are still in progress. Open issues in this repo
-for bugs and feature requests.
+Developer ID credential setup are still in progress. Open issues in this
+repo for bugs and feature requests.

@@ -248,9 +248,9 @@ struct RootView: View {
 
     private var availableSections: [AppSection] {
         guard let connection = appState.activeConnection else {
-            return [.connections]
+            return [.connections, .runtime]
         }
-        var sections: [AppSection] = [.connections, .overview, .sessions, .cronjobs, .kanban, .files, .usage, .skills, .knowledgeBase, .connectors, .providers, .mail, .messaging, .terminal, .doctor]
+        var sections: [AppSection] = [.connections, .overview, .runtime, .sessions, .cronjobs, .kanban, .files, .usage, .skills, .knowledgeBase, .connectors, .providers, .mail, .messaging, .terminal, .doctor]
         if connection.capabilities.supportsVisualDesktop {
             sections.append(.desktop)
         }
@@ -272,6 +272,15 @@ struct RootView: View {
             ConnectionsView()
         case .overview:
             OverviewView()
+        case .runtime:
+            HermesRuntimeView(
+                status: appState.hermesRuntimeStatus,
+                errorMessage: appState.hermesRuntimeError,
+                isRefreshing: appState.isRefreshingHermesRuntimeStatus,
+                refresh: {
+                    Task { await appState.refreshHermesRuntimeStatus(manual: true) }
+                }
+            )
         case .files:
             FilesView(splitLayout: $filesSplitLayout)
         case .sessions:

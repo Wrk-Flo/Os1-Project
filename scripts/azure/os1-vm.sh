@@ -10,12 +10,15 @@ SSH_RULE_PRIORITY="${OS1_AZURE_SSH_RULE_PRIORITY:-1000}"
 SSH_USER="${OS1_AZURE_SSH_USER:-hermes}"
 SSH_KEY="${OS1_AZURE_SSH_KEY:-$HOME/.ssh/id_ed25519}"
 DRY_RUN="${OS1_AZURE_DRY_RUN:-0}"
+ALLOW_MUTATIONS="${OS1_AZURE_ALLOW_MUTATIONS:-0}"
 
 usage() {
     cat <<EOF
 Usage: $(basename "$0") <command>
 
 Commands:
+  preflight              Show Azure account/subscription readiness without mutations.
+  local-fallback         Print local OSS fallback commands without contacting Azure.
   status                 Show VM power state, public IP, and SSH allowlist rule.
   refresh-ssh-allowlist  Set the SSH NSG rule source to this Mac's current public IP.
   start                  Start the standalone OS1 Azure VM.
@@ -34,6 +37,22 @@ Environment overrides:
   OS1_AZURE_SSH_USER         Default: hermes
   OS1_AZURE_SSH_KEY          Default: ~/.ssh/id_ed25519
   OS1_AZURE_DRY_RUN=1        Print Azure mutations instead of running them
+  OS1_AZURE_ALLOW_MUTATIONS=1 Required for Azure write commands. Default: 0
+  OS1_AZURE_VERBOSE=1        Include extra Azure identifiers in read-only output
+EOF
+}
+
+print_local_fallback() {
+    cat <<'EOF'
+Local fallback (no Azure, Key Vault, or VM mutation):
+  ollama serve
+  ollama pull qwen2.5-coder:3b
+  scripts/configure-local-oss-models.sh ollama
+
+For llama.cpp, run an OpenAI-compatible server on 127.0.0.1:8080, then:
+  scripts/configure-local-oss-models.sh llama-cpp
+
+See docs/local-oss-runtime.md.
 EOF
 }
 
@@ -47,10 +66,20 @@ require_command() {
 }
 
 require_az() {
-    require_command az
+    local output
 
-    if ! az account show --only-show-errors >/dev/null; then
+    if ! command -v az >/dev/null 2>&1; then
+        echo "error: missing required command: az" >&2
+        print_local_fallback >&2
+        exit 1
+    fi
+
+    if ! output="$(az account show --only-show-errors 2>&1 >/dev/null)"; then
         echo "error: Azure CLI is not logged in; run 'az login' first." >&2
+        if contains_disabled_azure_error "$output"; then
+            echo "error: Azure account reports a disabled/read-only subscription." >&2
+        fi
+        print_local_fallback >&2
         exit 1
     fi
 }
@@ -59,7 +88,41 @@ az_tsv() {
     az "$@" --only-show-errors -o tsv
 }
 
+subscription_state() {
+    az_tsv account show --query "state"
+}
+
+contains_disabled_azure_error() {
+    grep -Eiq 'ReadOnlyDisabledSubscription|DisabledSubscription|SubscriptionDisabled|subscription[^[:alnum:]]+is[^[:alnum:]]+disabled|read[ -]?only|PastDue|billing' <<<"$1"
+}
+
+ensure_azure_mutation_enabled() {
+    local state
+
+    if [[ "$ALLOW_MUTATIONS" != "1" ]]; then
+        echo "error: Azure mutations are disabled by default for the current Azure-disabled posture." >&2
+        echo "Set OS1_AZURE_ALLOW_MUTATIONS=1 only after 'scripts/azure/os1-vm.sh preflight' reports a healthy subscription." >&2
+        print_local_fallback >&2
+        exit 1
+    fi
+
+    state="$(subscription_state 2>/dev/null || true)"
+    if [[ -z "$state" || "$state" != "Enabled" ]]; then
+        echo "error: refusing Azure mutation because subscription state is '${state:-unknown}'." >&2
+        print_local_fallback >&2
+        exit 1
+    fi
+}
+
+ensure_azure_mutation_or_dry_run() {
+    if [[ "$DRY_RUN" != "1" ]]; then
+        ensure_azure_mutation_enabled
+    fi
+}
+
 run_az_mutation() {
+    local output
+
     if [[ "$DRY_RUN" == "1" ]]; then
         printf 'dry-run: az'
         printf ' %q' "$@"
@@ -67,7 +130,16 @@ run_az_mutation() {
         return
     fi
 
-    az "$@" --only-show-errors >/dev/null
+    ensure_azure_mutation_enabled
+
+    if ! output="$(az "$@" --only-show-errors 2>&1 >/dev/null)"; then
+        if contains_disabled_azure_error "$output"; then
+            echo "error: Azure subscription is disabled/read-only; refusing Azure mutation." >&2
+            print_local_fallback >&2
+        fi
+        echo "$output" >&2
+        exit 1
+    fi
 }
 
 public_ip() {
@@ -83,6 +155,13 @@ power_state() {
         --resource-group "$RESOURCE_GROUP" \
         --name "$VM_NAME" \
         --query "instanceView.statuses[?starts_with(code, 'PowerState/')].displayStatus | [0]"
+}
+
+provisioning_state() {
+    az_tsv vm show \
+        --resource-group "$RESOURCE_GROUP" \
+        --name "$VM_NAME" \
+        --query "provisioningState"
 }
 
 current_operator_cidr() {
@@ -113,8 +192,8 @@ current_operator_cidr() {
 show_status() {
     local ip rule_source state
 
-    state="$(power_state)"
-    ip="$(public_ip)"
+    state="$(power_state 2>/dev/null || true)"
+    ip="$(public_ip 2>/dev/null || true)"
 
     echo "VM: $VM_NAME"
     echo "Resource group: $RESOURCE_GROUP"
@@ -130,10 +209,64 @@ show_status() {
     echo "SSH NSG: $NSG_NAME"
     echo "SSH rule: $SSH_RULE_NAME"
     echo "SSH source: ${rule_source:-missing}"
+
+    if [[ -z "$state" && -z "$ip" ]]; then
+        echo "Azure status: unavailable; run 'scripts/azure/os1-vm.sh preflight' and use local fallback while Azure is disabled."
+    fi
+}
+
+show_preflight() {
+    local ip state subscription_id subscription_name subscription_state vm_id vm_provisioning
+
+    subscription_id="$(az_tsv account show --query "id")"
+    subscription_name="$(az_tsv account show --query "name")"
+    subscription_state="$(az_tsv account show --query "state")"
+
+    echo "Azure CLI: logged in"
+    echo "Subscription: ${subscription_name:-unknown}"
+    if [[ "${OS1_AZURE_VERBOSE:-0}" == "1" ]]; then
+        echo "Subscription ID: ${subscription_id:-unknown}"
+    fi
+    echo "Subscription state: ${subscription_state:-unknown}"
+    if [[ "$subscription_state" != "Enabled" ]]; then
+        echo "Write readiness: blocked; subscription must be Enabled before start/stop/allowlist commands."
+        print_local_fallback
+    else
+        echo "Write readiness: account reports Enabled; write commands may still fail if ARM marks the subscription read-only."
+    fi
+
+    if [[ "$DRY_RUN" == "1" ]]; then
+        echo "Mutation guard: dry-run; Azure mutations will be printed, not run."
+    elif [[ "$ALLOW_MUTATIONS" == "1" ]]; then
+        echo "Mutation guard: opt-in enabled; write commands still require subscription state Enabled."
+    else
+        echo "Mutation guard: active; set OS1_AZURE_ALLOW_MUTATIONS=1 only when Azure writes are intentionally restored."
+    fi
+
+    vm_id="$(az_tsv vm show \
+        --resource-group "$RESOURCE_GROUP" \
+        --name "$VM_NAME" \
+        --query "id" 2>/dev/null || true)"
+    if [[ -n "$vm_id" ]]; then
+        echo "VM lookup: found"
+        vm_provisioning="$(provisioning_state 2>/dev/null || true)"
+        state="$(power_state 2>/dev/null || true)"
+        ip="$(public_ip 2>/dev/null || true)"
+        echo "VM provisioning state: ${vm_provisioning:-unknown}"
+        echo "VM power state: ${state:-unknown}"
+        echo "VM public IP: ${ip:-none}"
+        if [[ "$vm_provisioning" == "Failed" ]]; then
+            echo "VM readiness: provisioning failed; repair the VM state before relying on SSH or secret sync."
+        fi
+    else
+        echo "VM lookup: missing $RESOURCE_GROUP/$VM_NAME"
+    fi
 }
 
 refresh_ssh_allowlist() {
     local cidr existing_rule
+
+    ensure_azure_mutation_or_dry_run
 
     cidr="$(current_operator_cidr)"
     existing_rule="$(az_tsv network nsg rule show \
@@ -317,6 +450,13 @@ main() {
     case "$command" in
         help|-h|--help)
             usage
+            ;;
+        preflight)
+            require_az
+            show_preflight
+            ;;
+        local-fallback)
+            print_local_fallback
             ;;
         status)
             require_az

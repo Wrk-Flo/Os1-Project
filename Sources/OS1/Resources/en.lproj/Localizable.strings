@@ -1007,3 +1007,8 @@
 "Use SSH for any host you already control. Orgo VM is optional if you have an Orgo account." = "Use SSH for any host you already control. Orgo VM is optional if you have an Orgo account.";
 "Use SSH for any host you already control. Orgo VM is hidden unless explicitly enabled." = "Use SSH for any host you already control. Orgo VM is hidden unless explicitly enabled.";
 "Voice" = "Voice";
+"Local Hermes runtime is not installed." = "Local Hermes runtime is not installed.";
+"Local Hermes runtime refreshed." = "Local Hermes runtime refreshed.";
+"Local provider" = "Local provider";
+"No API key is required. OS1 will register this OpenAI-compatible local endpoint and use it from the selected host." = "No API key is required. OS1 will register this OpenAI-compatible local endpoint and use it from the selected host.";
+"Refreshing local Hermes runtime…" = "Refreshing local Hermes runtime…";

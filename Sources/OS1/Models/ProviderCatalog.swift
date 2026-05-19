@@ -24,6 +24,7 @@ struct ProviderCatalogEntry: Identifiable, Equatable, Sendable {
     let kind: Kind
     let validation: Validation
     let supportsOAuth: Bool
+    let requiresAPIKey: Bool
 
     var id: String { slug }
 
@@ -59,7 +60,53 @@ enum ProviderCatalog {
             // but isn't a good "is this key valid" probe because billing
             // can fail it independently. We rely on saving + reading-back.
             validation: .skip(reason: "Anthropic has no cheap key-probe endpoint."),
-            supportsOAuth: false
+            supportsOAuth: false,
+            requiresAPIKey: true
+        ),
+        ProviderCatalogEntry(
+            slug: "ollama",
+            displayName: "Ollama Local",
+            tagline: "Local open-source models on this Mac or SSH host.",
+            symbolName: "desktopcomputer",
+            keyPrefixHint: "No key required",
+            dashboardURL: URL(string: "https://ollama.com/download")!,
+            docsURL: URL(string: "https://github.com/ollama/ollama/blob/main/docs/openai.md")!,
+            envVar: "OLLAMA_API_KEY",
+            baseURL: URL(string: "http://127.0.0.1:11434/v1")!,
+            kind: .customProvider(configName: "ollama"),
+            validation: .skip(reason: "Ollama runs locally and does not require an API key."),
+            supportsOAuth: false,
+            requiresAPIKey: false
+        ),
+        ProviderCatalogEntry(
+            slug: "llama-cpp",
+            displayName: "llama.cpp Local",
+            tagline: "OpenAI-compatible llama.cpp server for GGUF models.",
+            symbolName: "cpu",
+            keyPrefixHint: "No key required",
+            dashboardURL: URL(string: "https://github.com/ggml-org/llama.cpp")!,
+            docsURL: URL(string: "https://github.com/ggml-org/llama.cpp/tree/master/examples/server")!,
+            envVar: "LLAMA_CPP_API_KEY",
+            baseURL: URL(string: "http://127.0.0.1:8080/v1")!,
+            kind: .customProvider(configName: "llama_cpp"),
+            validation: .skip(reason: "llama.cpp runs locally and does not require an API key."),
+            supportsOAuth: false,
+            requiresAPIKey: false
+        ),
+        ProviderCatalogEntry(
+            slug: "lm-studio",
+            displayName: "LM Studio Local",
+            tagline: "Local OpenAI-compatible models served by LM Studio.",
+            symbolName: "laptopcomputer",
+            keyPrefixHint: "No key required",
+            dashboardURL: URL(string: "https://lmstudio.ai/")!,
+            docsURL: URL(string: "https://lmstudio.ai/docs/developer/openai-compat")!,
+            envVar: "LM_STUDIO_API_KEY",
+            baseURL: URL(string: "http://127.0.0.1:1234/v1")!,
+            kind: .customProvider(configName: "lm_studio"),
+            validation: .skip(reason: "LM Studio runs locally and does not require an API key."),
+            supportsOAuth: false,
+            requiresAPIKey: false
         ),
         ProviderCatalogEntry(
             slug: "openrouter",
@@ -73,7 +120,8 @@ enum ProviderCatalog {
             baseURL: URL(string: "https://openrouter.ai/api/v1")!,
             kind: .builtin(typeKey: "openrouter"),
             validation: .modelsEndpoint(path: "/models"),
-            supportsOAuth: true
+            supportsOAuth: true,
+            requiresAPIKey: true
         ),
         ProviderCatalogEntry(
             slug: "openai",
@@ -87,7 +135,8 @@ enum ProviderCatalog {
             baseURL: URL(string: "https://api.openai.com/v1")!,
             kind: .customProvider(configName: "openai"),
             validation: .modelsEndpoint(path: "/models"),
-            supportsOAuth: false
+            supportsOAuth: false,
+            requiresAPIKey: true
         ),
         ProviderCatalogEntry(
             slug: "fireworks",
@@ -101,7 +150,8 @@ enum ProviderCatalog {
             baseURL: URL(string: "https://api.fireworks.ai/inference/v1")!,
             kind: .customProvider(configName: "fireworks"),
             validation: .modelsEndpoint(path: "/models"),
-            supportsOAuth: false
+            supportsOAuth: false,
+            requiresAPIKey: true
         ),
         ProviderCatalogEntry(
             slug: "kimi",
@@ -115,7 +165,8 @@ enum ProviderCatalog {
             baseURL: URL(string: "https://api.moonshot.ai/v1")!,
             kind: .builtin(typeKey: "kimi-coding"),
             validation: .modelsEndpoint(path: "/models"),
-            supportsOAuth: false
+            supportsOAuth: false,
+            requiresAPIKey: true
         ),
         ProviderCatalogEntry(
             slug: "zai",
@@ -132,7 +183,8 @@ enum ProviderCatalog {
             // the base URL so the path is "/models" (the suffix appends
             // to baseURL.path).
             validation: .modelsEndpoint(path: "/models"),
-            supportsOAuth: false
+            supportsOAuth: false,
+            requiresAPIKey: true
         )
     ]
 
@@ -181,8 +233,8 @@ struct ProviderModelSummary: Identifiable, Equatable, Sendable, Decodable {
 }
 
 /// Wire shape returned by every provider's `/models` endpoint we hit.
-/// All five OpenAI-compatible providers wrap the list in `{ data: [...] }`
-/// so we can share one decoder.
+/// OpenAI-compatible providers wrap the list in `{ data: [...] }` so
+/// we can share one decoder.
 struct ProviderModelListResponse: Decodable, Equatable {
     let data: [ProviderModelSummary]
 }

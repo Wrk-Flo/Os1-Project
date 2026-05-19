@@ -54,7 +54,7 @@ struct ProviderValidationClient: Sendable {
 
     func validate(apiKey: String, against entry: ProviderCatalogEntry) async throws -> ProviderValidationResult {
         let trimmed = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
+        guard !trimmed.isEmpty || !entry.requiresAPIKey else {
             throw ProviderValidationError.invalidAPIKey(detail: "Paste your API key first.")
         }
 

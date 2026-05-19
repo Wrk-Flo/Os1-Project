@@ -2,6 +2,40 @@
 
 This runbook covers the standalone OS1 Azure VM used through the existing SSH transport. It is the current no-Orgo path for running OS1 against a cloud host, and it does not create app source changes or install a new VM helper service.
 
+## Azure Disabled Fallback
+
+Default posture as of 2026-05-18: treat Azure subscription and Key Vault access
+as unavailable until `scripts/azure/os1-vm.sh preflight` proves otherwise.
+
+If Azure returns disabled-subscription, billing, or Key Vault data-plane
+errors, do not use this runbook as the active setup path. Use local OSS
+models and local/SSH infrastructure instead:
+
+```sh
+ollama serve
+ollama pull qwen2.5-coder:3b
+scripts/configure-local-oss-models.sh ollama
+```
+
+For llama.cpp, run its OpenAI-compatible server on `127.0.0.1:8080`, then:
+
+```sh
+scripts/configure-local-oss-models.sh llama-cpp
+```
+
+This writes a local Hermes provider under `~/.hermes/config.yaml`, sets the
+active model, and avoids Azure CLI, Azure Key Vault, Azure OpenAI, and VM
+mutations entirely. The Azure VM helper can print the same fallback without
+contacting Azure:
+
+```sh
+scripts/azure/os1-vm.sh local-fallback
+scripts/azure/sync-os1-secrets.py --local-fallback
+```
+
+See `docs/local-oss-runtime.md` for the local-only runbook. Resume this Azure
+runbook only after the subscription and Key Vault data plane are healthy again.
+
 For the separate provider-neutral Computer Session lane covering disposable
 visual desktops and sandboxes, see `docs/computer-session-provider-plan.md`.
 This runbook remains scoped to Azure VM operations over SSH.
@@ -35,6 +69,22 @@ The helper never prints Azure tokens, private keys, or application secrets. It d
 
 ## Common Operations
 
+Run a read-only Azure readiness check before mutations:
+
+```sh
+scripts/azure/os1-vm.sh preflight
+```
+
+`preflight` reports the Azure CLI login state, subscription name/ID/state,
+whether writes are blocked because the subscription is not `Enabled`, and
+whether the configured VM can be found. It does not start, stop, update, or
+create Azure resources.
+
+Azure write commands fail closed by default. After `preflight` reports a
+healthy subscription, explicitly opt in to Azure mutations with
+`OS1_AZURE_ALLOW_MUTATIONS=1`. Leave that variable unset while Azure is
+disabled or uncertain.
+
 Show VM state and the SSH allowlist source:
 
 ```sh
@@ -44,13 +94,15 @@ scripts/azure/os1-vm.sh status
 Refresh the SSH NSG rule to this Mac's current public IP:
 
 ```sh
-scripts/azure/os1-vm.sh refresh-ssh-allowlist
+OS1_AZURE_ALLOW_MUTATIONS=1 scripts/azure/os1-vm.sh refresh-ssh-allowlist
 ```
 
 Use an explicit CIDR instead of public IP discovery:
 
 ```sh
-OS1_AZURE_OPERATOR_CIDR=203.0.113.10/32 scripts/azure/os1-vm.sh refresh-ssh-allowlist
+OS1_AZURE_ALLOW_MUTATIONS=1 \
+OS1_AZURE_OPERATOR_CIDR=203.0.113.10/32 \
+scripts/azure/os1-vm.sh refresh-ssh-allowlist
 ```
 
 Preview an allowlist mutation without changing Azure:
@@ -62,13 +114,18 @@ OS1_AZURE_DRY_RUN=1 scripts/azure/os1-vm.sh refresh-ssh-allowlist
 Start, restart, stop, or deallocate the standalone VM:
 
 ```sh
-scripts/azure/os1-vm.sh start
-scripts/azure/os1-vm.sh restart
-scripts/azure/os1-vm.sh stop
-scripts/azure/os1-vm.sh deallocate
+OS1_AZURE_ALLOW_MUTATIONS=1 scripts/azure/os1-vm.sh start
+OS1_AZURE_ALLOW_MUTATIONS=1 scripts/azure/os1-vm.sh restart
+OS1_AZURE_ALLOW_MUTATIONS=1 scripts/azure/os1-vm.sh stop
+OS1_AZURE_ALLOW_MUTATIONS=1 scripts/azure/os1-vm.sh deallocate
 ```
 
 Use `deallocate` when the machine should stop incurring VM compute charges. Use `stop` only when the VM must remain allocated.
+
+If Azure returns `ReadOnlyDisabledSubscription`, re-enable the subscription
+before retrying `start`, `restart`, `stop`, `deallocate`, or
+`refresh-ssh-allowlist`. Read-only commands such as `preflight` and `status`
+are safe to run while the subscription is disabled.
 
 Smoke test the OS1 SSH path:
 
@@ -105,12 +162,25 @@ gateway_status:
 
 That is still ready for initial app testing. MCP servers appear after you install connector integrations from OS1, such as Composio or AgentMail.
 
-Sync known Azure Key Vault credentials onto the OS1 VM:
+Check known Azure Key Vault credentials without writing to the OS1 VM:
 
 ```sh
 scripts/azure/sync-os1-secrets.py --dry-run
-scripts/azure/sync-os1-secrets.py
 ```
+
+The sync helper is check-only by default. It prints subscription readiness and
+redacted `set`/`missing` status. It exits before any SSH write when the
+subscription is not `Enabled`, Key Vault is unavailable, or required secrets
+are missing.
+
+After Azure and Key Vault are restored, apply the sync explicitly:
+
+```sh
+scripts/azure/sync-os1-secrets.py --apply
+```
+
+`OS1_AZURE_ALLOW_SECRET_SYNC=1` is also accepted for automation, but `--dry-run`
+always skips VM writes.
 
 Defaults:
 
@@ -124,13 +194,18 @@ Use a different Composio vault/secret when testing candidates:
 
 ```sh
 scripts/azure/sync-os1-secrets.py \
+  --dry-run \
   --composio-vault gs-quantum-kv \
   --composio-secret COMPOSIO-API-KEY
 ```
 
-The sync helper does not print secret values. It reports only redacted status, writes `OPENAI_API_KEY` and `TELEGRAM_BOT_TOKEN` to `~/.hermes/.env`, registers the `openai` provider in `~/.hermes/config.yaml`, sets `auth.json.active_provider=openai`, and writes `mcp_servers.composio`.
+The sync helper does not print secret values. With `--apply`, it reports only
+redacted status, writes `OPENAI_API_KEY` and `TELEGRAM_BOT_TOKEN` to
+`~/.hermes/.env`, registers the `openai` provider in
+`~/.hermes/config.yaml`, sets `auth.json.active_provider=openai`, and writes
+`mcp_servers.composio`.
 
-Current credential state observed from Azure:
+Historical credential state observed from Azure before the disabled posture:
 
 - `wrkflo-kv/openai-api-key`: available and installed on the VM.
 - `wrkflo-kv/composio-api-key`: available, but Composio MCP rejected it with `401 Unauthorized`.
@@ -188,7 +263,9 @@ Current OS1 VM Telegram state:
 
 ## Tool And MCP Integration
 
-You can start testing OS1 against the Azure VM now. Use this order:
+While Azure is disabled, use `docs/local-oss-runtime.md` instead of the Azure
+VM. After `preflight` reports healthy Azure access and the VM is reachable, use
+this order:
 
 1. Open OS1 and select `OS1 Hermes Dev`.
 2. Verify Overview, Sessions, Files, and Terminal against the SSH host.
