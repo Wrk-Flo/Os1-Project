@@ -32,17 +32,18 @@ ollama serve
 ollama pull qwen2.5-coder:3b
 ```
 
-For the full Hermes Agent runtime, prefer a model with at least a 64K context
-window. On the current 8 GB Mac, `llama3.1:8b` is the smallest installed model
-that satisfies Hermes' runtime check:
+For the full Hermes Agent runtime, prefer the smallest model that keeps the
+workflow responsive on this Mac. The default local profile uses
+`qwen2.5-coder:3b`; pull a larger model only when a specific heavier task needs
+it:
 
 ```sh
-ollama pull llama3.1:8b
+ollama pull qwen2.5-coder:3b
 ```
 
 Then point Hermes at Ollama's OpenAI-compatible endpoint. When `OLLAMA_MODEL`
-is not set, the helper chooses `llama3.1:8b` if it is installed, then falls
-back to the first model exposed by Ollama:
+is not set, the helper chooses `qwen2.5-coder:3b` when it is installed, then
+the first model exposed by Ollama:
 
 ```sh
 scripts/configure-local-oss-models.sh ollama
@@ -52,18 +53,17 @@ Optional overrides:
 
 ```sh
 OLLAMA_OPENAI_BASE_URL=http://127.0.0.1:11434/v1 \
-OLLAMA_MODEL=llama3.1:8b \
+OLLAMA_MODEL=qwen2.5-coder:3b \
 OLLAMA_NUM_CTX=4096 \
 HERMES_MAX_TOKENS=128 \
 scripts/configure-local-oss-models.sh ollama
 ```
 
-Use `qwen2.5-coder:3b` for direct local task scripts when speed matters; use
-`llama3.1:8b` for Hermes Agent itself so the runtime has a 64K context
-declaration. The helper disables Hermes compression by default for this
-local-smoke profile because the auxiliary compression model also needs a 64K
-context window. Re-enable it only after the selected local model responds
-quickly:
+Use `qwen2.5-coder:3b` for direct local task scripts and the default Hermes
+profile when speed matters. The helper disables Hermes compression by default
+for this local-smoke profile because the auxiliary compression model also needs
+a large context window. Re-enable it only after the selected local model
+responds quickly:
 
 ```sh
 HERMES_COMPRESSION_ENABLED=true scripts/configure-local-oss-models.sh ollama
@@ -159,6 +159,14 @@ the stack without starting a second `ollama serve`.
 
 See [`docs/local-ops-24-7.md`](local-ops-24-7.md) for logs, restart commands,
 model fallback, and production blockers.
+
+Run the readiness and business-smoke gates before treating the Mac as ready for
+live local operations:
+
+```sh
+scripts/os1-production-readiness.sh --local
+scripts/os1-business-smoke.sh --quick
+```
 
 For limited internal disk space, keep build outputs disposable and move large
 model caches to an external SSD. See [`docs/local-storage.md`](local-storage.md)

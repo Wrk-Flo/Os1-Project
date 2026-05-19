@@ -123,6 +123,17 @@ scripts/os1-storage-report.sh
 scripts/os1-clean-storage.sh --all
 ```
 
+Before using OS1 for live local work, run:
+
+```sh
+scripts/os1-production-readiness.sh --local
+scripts/os1-business-smoke.sh --quick
+```
+
+See [`docs/production-readiness.md`](docs/production-readiness.md) for local vs
+public release gates, and [`docs/business-use-cases.md`](docs/business-use-cases.md)
+for real local-first operating workflows.
+
 ### SSH or Azure VM
 
 1. Open the **Connections** tab → click **Add Host**

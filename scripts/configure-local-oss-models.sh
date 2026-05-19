@@ -11,7 +11,7 @@ case "$provider" in
     model="${OLLAMA_MODEL:-}"
     model_env="OLLAMA_MODEL"
     probe_url="${base_url%/}/models"
-    preferred_models="llama3.1:8b qwen2.5-coder:3b qwen2.5-coder:1.5b"
+    preferred_models="qwen2.5-coder:3b qwen2.5-coder:1.5b llama3.1:8b"
     ;;
   llama-cpp|llama_cpp|llamacpp)
     config_name="llama.cpp Local"

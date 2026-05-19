@@ -55,6 +55,7 @@ Run the local health check manually:
 
 ```sh
 scripts/os1-local-ops-health.sh
+scripts/os1-production-readiness.sh --local
 ```
 
 Hard failures include an invalid OS1 repo, missing Hermes CLI, failed Hermes
@@ -66,7 +67,7 @@ Useful overrides:
 
 ```sh
 OLLAMA_HOST=http://127.0.0.1:11434 \
-OLLAMA_MODEL=llama3.1:8b \
+OLLAMA_MODEL=qwen2.5-coder:3b \
 OS1_LOCAL_OPS_DISK_WARN_GIB=50 \
 OS1_LOCAL_OPS_DISK_FAIL_GIB=20 \
 OS1_LOCAL_OPS_EXTRA_DISK_PATHS=/Volumes/OS1Data \
@@ -88,7 +89,7 @@ scripts/install-local-ops-launchd.sh
 Install and load per-user services:
 
 ```sh
-scripts/install-local-ops-launchd.sh --apply
+OLLAMA_MODEL=qwen2.5-coder:3b scripts/install-local-ops-launchd.sh --apply
 ```
 
 This creates:
@@ -169,14 +170,15 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.os1.local.health.pli
 Keep at least two local models available:
 
 ```sh
-ollama pull llama3.1:8b
 ollama pull qwen2.5-coder:3b
+ollama pull qwen2.5-coder:1.5b
 ollama list
 ```
 
-Use `llama3.1:8b` for Hermes Agent when context declaration matters. Use
-`qwen2.5-coder:3b` for fast local coding and triage tasks. If the active model
-is missing or too slow, reconfigure Hermes locally:
+Use `qwen2.5-coder:3b` as the default local model on the current 8 GB Mac. Pull
+a larger model such as `llama3.1:8b` only when a specific heavier task needs it
+and you can tolerate the extra disk, RAM, and latency. If the active model is
+missing or too slow, reconfigure Hermes locally:
 
 ```sh
 OLLAMA_MODEL=qwen2.5-coder:3b scripts/configure-local-oss-models.sh ollama

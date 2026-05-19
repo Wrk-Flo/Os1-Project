@@ -14,6 +14,7 @@ manage_ollama=1
 health_interval="${OS1_LOCAL_HEALTH_INTERVAL_SECONDS:-300}"
 ollama_bind="${OS1_OLLAMA_BIND:-127.0.0.1:11434}"
 ollama_http_host="${OLLAMA_HOST:-http://127.0.0.1:11434}"
+ollama_model="${OLLAMA_MODEL:-qwen2.5-coder:3b}"
 log_dir="${OS1_LOCAL_OPS_LOG_DIR:-$HOME_DIR/Library/Logs/OS1}"
 launch_agents_dir="${OS1_LAUNCH_AGENTS_DIR:-$HOME_DIR/Library/LaunchAgents}"
 ollama_path="${OS1_OLLAMA_PATH:-}"
@@ -32,6 +33,7 @@ Options:
   --ollama-path PATH              Path to the ollama executable.
   --ollama-bind HOST:PORT         OLLAMA_HOST value for ollama serve. Default: 127.0.0.1:11434.
   --ollama-http-host URL          HTTP URL used by health checks. Default: http://127.0.0.1:11434.
+  --ollama-model MODEL            OLLAMA_MODEL value used by health checks. Default: qwen2.5-coder:3b.
   --log-dir PATH                  Log directory. Default: ~/Library/Logs/OS1.
   --launch-agents-dir PATH        LaunchAgents directory. Default: ~/Library/LaunchAgents.
   -h, --help                      Show this help.
@@ -165,6 +167,7 @@ render_health_plist() {
   repo_root_xml="$(printf '%s' "$REPO_ROOT" | xml_escape)"
   path_xml="$(printf '%s' "$DEFAULT_PATH" | xml_escape)"
   ollama_http_host_xml="$(printf '%s' "$ollama_http_host" | xml_escape)"
+  ollama_model_xml="$(printf '%s' "$ollama_model" | xml_escape)"
   log_dir_xml="$(printf '%s' "$log_dir" | xml_escape)"
 
   cat > "$target" <<EOF
@@ -187,6 +190,8 @@ render_health_plist() {
     <string>$path_xml</string>
     <key>OLLAMA_HOST</key>
     <string>$ollama_http_host_xml</string>
+    <key>OLLAMA_MODEL</key>
+    <string>$ollama_model_xml</string>
     <key>OS1_LOCAL_OPS_LOG_DIR</key>
     <string>$log_dir_xml</string>
   </dict>
@@ -263,6 +268,11 @@ while [ "$#" -gt 0 ]; do
     --ollama-http-host)
       [ "$#" -ge 2 ] || die "--ollama-http-host requires a value"
       ollama_http_host="$2"
+      shift 2
+      ;;
+    --ollama-model)
+      [ "$#" -ge 2 ] || die "--ollama-model requires a value"
+      ollama_model="$2"
       shift 2
       ;;
     --log-dir)
