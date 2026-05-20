@@ -99,6 +99,29 @@ first_non_empty_line() {
   awk 'NF { print; exit }'
 }
 
+summary_value() {
+  label="$1"
+  path="$2"
+  awk -v label="$label" '
+    $0 ~ "^- " label ": `" {
+      split($0, parts, "`")
+      print parts[2]
+      exit
+    }
+  ' "$path" 2>/dev/null
+}
+
+utc_epoch_from_run_id() {
+  run_id="$1"
+  if date -u -j -f "%Y%m%dT%H%M%SZ" "$run_id" "+%s" >/dev/null 2>&1; then
+    date -u -j -f "%Y%m%dT%H%M%SZ" "$run_id" "+%s"
+  elif date -u -d "$run_id" "+%s" >/dev/null 2>&1; then
+    date -u -d "$run_id" "+%s"
+  else
+    return 1
+  fi
+}
+
 status_of_env_flag() {
   name="$1"
   eval "value=\${$name-}"
@@ -276,15 +299,10 @@ PY
 }
 
 check_ollama() {
-  if [ -z "${OLLAMA_MODEL:-}" ]; then
-    inferred_model="$(infer_ollama_model_from_hermes || true)"
-    if [ -n "$inferred_model" ]; then
-      export OLLAMA_MODEL="$inferred_model"
-      info "OLLAMA_MODEL inferred from Hermes config: $OLLAMA_MODEL"
-    fi
-  fi
-
   if [ -x "$REPO_ROOT/scripts/ollama-health.sh" ]; then
+    if [ -z "${OLLAMA_MODEL:-}" ]; then
+      info "OLLAMA_MODEL is unset; delegated Ollama health check will use its local default"
+    fi
     info "running delegated Ollama health check"
     ollama_output="$("$REPO_ROOT/scripts/ollama-health.sh" 2>&1)"
     ollama_status=$?
@@ -309,11 +327,33 @@ check_cua() {
     return 0
   fi
 
+  if [ -x "$REPO_ROOT/scripts/configure-cua-api-key.sh" ]; then
+    cua_key_status="$("$REPO_ROOT/scripts/configure-cua-api-key.sh" --status 2>/dev/null || true)"
+    case "$cua_key_status" in
+      "cua_api_key=set")
+        pass "CUA API key: set"
+        ;;
+      "cua_api_key=missing")
+        warn "CUA API key: missing"
+        ;;
+      "cua_api_key=unreadable")
+        warn "CUA API key: unreadable"
+        ;;
+      *)
+        warn "CUA API key status could not be checked"
+        ;;
+    esac
+  else
+    warn "CUA API key helper is missing; status was not checked"
+  fi
+
   cua_command="${CUA_DRIVER_CLI:-cua-driver}"
   if cua_path="$(resolve_executable "$cua_command")"; then
     pass "cua-driver found: $cua_path"
+    set +e
     cua_output="$("$cua_path" --version 2>&1)"
     cua_status=$?
+    set -e
     cua_label="$(printf '%s\n' "$cua_output" | first_non_empty_line)"
     if [ "$cua_status" -eq 0 ]; then
       pass "cua-driver version check passed${cua_label:+: $cua_label}"
@@ -321,11 +361,13 @@ check_cua() {
       warn "cua-driver is installed but --version exited $cua_status"
     fi
 
-    if command -v pgrep >/dev/null 2>&1; then
+    if "$cua_path" status >/dev/null 2>&1; then
+      pass "CUA driver daemon is running"
+    elif command -v pgrep >/dev/null 2>&1; then
       if pgrep -x "cua-driver" >/dev/null 2>&1 || pgrep -x "CuaDriver" >/dev/null 2>&1; then
-        pass "CUA driver process is running"
+        warn "CUA driver process exists, but daemon status did not confirm running"
       else
-        warn "cua-driver is installed but no running CUA driver process was detected"
+        warn "cua-driver is installed but no running CUA driver daemon was detected"
       fi
     else
       warn "pgrep not found; CUA process status was not checked"
@@ -409,6 +451,61 @@ check_disk() {
   fi
 }
 
+check_business_ops_catchup() {
+  if [ "$(uname -s 2>/dev/null || printf unknown)" != "Darwin" ]; then
+    return 0
+  fi
+  if [ "${OS1_LOCAL_OPS_KICK_BUSINESS_OPS:-1}" = "0" ]; then
+    return 0
+  fi
+  if ! command -v launchctl >/dev/null 2>&1; then
+    return 0
+  fi
+
+  label="com.os1.local.business-ops"
+  domain="gui/$(id -u)"
+  if ! state="$(launchctl print "$domain/$label" 2>/dev/null)"; then
+    return 0
+  fi
+
+  output_root="${OS1_BUSINESS_OPS_OUTPUT_ROOT:-$HOME_DIR/Library/Application Support/OS1/business-ops}"
+  latest_summary="$output_root/latest/summary.md"
+  [ -f "$latest_summary" ] || return 0
+
+  run_dir="$(summary_value "Run directory" "$latest_summary")"
+  run_id="$(basename "$run_dir" 2>/dev/null || true)"
+  if ! latest_epoch="$(utc_epoch_from_run_id "$run_id" 2>/dev/null)"; then
+    warn "business operations catch-up skipped; latest run id could not be parsed: ${run_id:-missing}"
+    return 0
+  fi
+
+  interval="$(printf '%s\n' "$state" | awk -F'= ' '/run interval =/ { print $2; exit }')"
+  case "$interval" in
+    ""|*[!0-9]*)
+      interval=3600
+      ;;
+  esac
+  catchup_seconds="${OS1_BUSINESS_OPS_CATCHUP_SECONDS:-$((interval * 2))}"
+  case "$catchup_seconds" in
+    ""|*[!0-9]*)
+      warn "business operations catch-up skipped; OS1_BUSINESS_OPS_CATCHUP_SECONDS is invalid"
+      return 0
+      ;;
+  esac
+
+  now_epoch="$(date -u "+%s")"
+  age_seconds="$((now_epoch - latest_epoch))"
+  if [ "$age_seconds" -lt 0 ] || [ "$age_seconds" -le "$catchup_seconds" ]; then
+    return 0
+  fi
+
+  if launchctl kickstart -k "$domain/$label" >/dev/null 2>&1; then
+    pass "business operations catch-up kicked $label after ${age_seconds}s without a fresh run"
+  else
+    warn "business operations catch-up failed to kick $label after ${age_seconds}s without a fresh run"
+  fi
+}
+
 info "OS1 local operations health check started"
 check_repo
 check_azure_disabled
@@ -416,6 +513,7 @@ check_hermes
 check_ollama
 check_cua
 check_disk
+check_business_ops_catchup
 
 if [ "$failures" -eq 0 ]; then
   pass "health check completed with $warnings warning(s)"

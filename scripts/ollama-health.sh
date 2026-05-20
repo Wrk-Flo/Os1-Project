@@ -2,7 +2,7 @@
 set -eu
 set -o pipefail 2>/dev/null || true
 
-MODEL="${OLLAMA_MODEL:-qwen2.5-coder:3b}"
+MODEL="${OLLAMA_MODEL:-qwen2.5-coder:1.5b}"
 HOST="${OLLAMA_HOST:-http://127.0.0.1:11434}"
 HOST="${HOST%/}"
 NATIVE_TAGS_URL="$HOST/api/tags"

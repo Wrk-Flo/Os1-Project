@@ -6,6 +6,7 @@ MODEL="${OLLAMA_MODEL:-qwen2.5-coder:3b}"
 HOST="${OLLAMA_HOST:-http://127.0.0.1:11434}"
 NUM_PREDICT="${OLLAMA_NUM_PREDICT:-512}"
 TEMPERATURE="${OLLAMA_TEMPERATURE:-0.2}"
+MAX_TIME_SECONDS="${OLLAMA_TASK_MAX_TIME_SECONDS:-120}"
 GENERATE_URL="${HOST%/}/api/generate"
 
 body_file="$(mktemp)"
@@ -15,7 +16,12 @@ payload_file="$(mktemp)"
 cleanup() {
   rm -f "$body_file" "$err_file" "$payload_file"
 }
-trap cleanup EXIT HUP INT TERM
+abort() {
+  cleanup
+  exit 130
+}
+trap cleanup EXIT
+trap abort HUP INT TERM
 
 die() {
   printf 'ollama-task: %s\n' "$*" >&2
@@ -33,6 +39,17 @@ fi
 if [ -z "$prompt" ]; then
   die "missing prompt; prompt cannot be empty"
 fi
+
+case "$MAX_TIME_SECONDS" in
+  ""|*[!0-9]*)
+    die "OLLAMA_TASK_MAX_TIME_SECONDS must be a positive integer"
+    ;;
+  *)
+    if [ "$MAX_TIME_SECONDS" -le 0 ]; then
+      die "OLLAMA_TASK_MAX_TIME_SECONDS must be greater than zero"
+    fi
+    ;;
+esac
 
 if ! command -v curl >/dev/null 2>&1; then
   die "curl not found"
@@ -81,7 +98,7 @@ else
   exit "$status"
 fi
 
-if ! http_status="$(curl -sS --connect-timeout 3 --max-time 600 -o "$body_file" -w '%{http_code}' \
+if ! http_status="$(curl -sS --connect-timeout 3 --max-time "$MAX_TIME_SECONDS" -o "$body_file" -w '%{http_code}' \
   -H 'Content-Type: application/json' \
   --data-binary "@$payload_file" \
   "$GENERATE_URL" 2>"$err_file")"; then

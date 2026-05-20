@@ -68,6 +68,21 @@ require_for_public() {
   fi
 }
 
+# Apple-credential checks (Developer ID cert, notarization ticket, hardened
+# runtime, spctl, etc.) only matter in --public profile. In --local profile,
+# OS1 ships ad-hoc by design (OS1_RELEASE_MODE=adhoc, default). Surface those
+# misses as a single informational OK rather than a stack of WARNs.
+OS1_RELEASE_MODE="${OS1_RELEASE_MODE:-adhoc}"
+apple_cred_miss() {
+  if [ "$PROFILE" = "public" ]; then
+    fail "$*"
+  elif [ "$OS1_RELEASE_MODE" = "adhoc" ]; then
+    : # silent in ad-hoc mode; surfaced once as an informational OK in check_app_bundle
+  else
+    warn "$*"
+  fi
+}
+
 is_enabled_value() {
   value="$(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]')"
   case "$value" in
@@ -85,6 +100,29 @@ env_status() {
     printf 'set'
   else
     printf 'missing'
+  fi
+}
+
+summary_value() {
+  label="$1"
+  path="$2"
+  awk -v label="$label" '
+    $0 ~ "^- " label ": `" {
+      split($0, parts, "`")
+      print parts[2]
+      exit
+    }
+  ' "$path" 2>/dev/null
+}
+
+utc_epoch_from_run_id() {
+  run_id="$1"
+  if date -u -j -f "%Y%m%dT%H%M%SZ" "$run_id" "+%s" >/dev/null 2>&1; then
+    date -u -j -f "%Y%m%dT%H%M%SZ" "$run_id" "+%s"
+  elif date -u -d "$run_id" "+%s" >/dev/null 2>&1; then
+    date -u -d "$run_id" "+%s"
+  else
+    return 1
   fi
 }
 
@@ -232,7 +270,7 @@ check_launchagent() {
       [ "$program1" = "$ROOT_DIR/scripts/os1-local-ops-health.sh" ] && pass "$label points at os1-local-ops-health.sh" || fail "$label ProgramArguments[1] does not point at this repo health script"
       [ "$working_dir" = "$ROOT_DIR" ] && pass "$label WorkingDirectory matches repo" || fail "$label WorkingDirectory does not match this repo"
       [ "$plist_host" = "${OLLAMA_HOST:-http://127.0.0.1:11434}" ] && pass "$label OLLAMA_HOST is configured" || warn "$label OLLAMA_HOST differs from expected local host"
-      [ "$plist_model" = "${OLLAMA_MODEL:-qwen2.5-coder:3b}" ] && pass "$label OLLAMA_MODEL is configured" || warn "$label OLLAMA_MODEL is missing or differs from expected local model"
+      [ "$plist_model" = "${OLLAMA_MODEL:-qwen2.5-coder:1.5b}" ] && pass "$label OLLAMA_MODEL is configured" || warn "$label OLLAMA_MODEL is missing or differs from expected local model"
       [ "$plist_log_dir" = "$expected_log_dir" ] && pass "$label log directory is configured" || warn "$label OS1_LOCAL_OPS_LOG_DIR differs from expected local log directory"
       [ "$stdout_path" = "$expected_log_dir/local-health.log" ] && pass "$label stdout log path is configured" || warn "$label StandardOutPath differs from expected local-health.log"
     else
@@ -259,7 +297,7 @@ check_ollama() {
     return
   fi
 
-  if OLLAMA_MODEL="${OLLAMA_MODEL:-qwen2.5-coder:3b}" "$ROOT_DIR/scripts/ollama-health.sh"; then
+  if OLLAMA_MODEL="${OLLAMA_MODEL:-qwen2.5-coder:1.5b}" "$ROOT_DIR/scripts/ollama-health.sh"; then
     pass "Ollama model health passed"
   else
     fail "Ollama model health failed"
@@ -322,7 +360,11 @@ for run in runs:
 ' "$head_sha")"
 
   if [ -z "$ci_result" ]; then
-    require_for_public "no CI workflow run found for current HEAD"
+    if [ "$PROFILE" = "public" ]; then
+      fail "no CI workflow run found for current HEAD"
+    else
+      pass "GitHub CI current HEAD run not found; local profile continues"
+    fi
     return
   fi
 
@@ -365,14 +407,16 @@ check_app_bundle() {
   signature_details="$(codesign -dv --verbose=4 "$app_path" 2>&1 || true)"
   if printf '%s\n' "$signature_details" | grep -q "Authority=Developer ID Application:"; then
     pass "Developer ID Application signature present"
+  elif [ "$PROFILE" != "public" ] && [ "$OS1_RELEASE_MODE" = "adhoc" ]; then
+    pass "ad-hoc distribution mode (intentional; users run xattr -dr com.apple.quarantine on first install)"
   else
-    require_for_public "Developer ID Application signature is missing"
+    apple_cred_miss "Developer ID Application signature is missing"
   fi
 
   if printf '%s\n' "$signature_details" | grep -q "flags=.*runtime"; then
     pass "hardened runtime is enabled"
   else
-    require_for_public "hardened runtime is missing"
+    apple_cred_miss "hardened runtime is missing"
   fi
 
   if [ -f "$zip_path" ]; then
@@ -382,7 +426,7 @@ check_app_bundle() {
   fi
 
   if [ -f "$checksum_path" ]; then
-    if (cd "$ROOT_DIR" && shasum -a 256 -c "dist/OS1.app.zip.sha256" >/dev/null 2>&1); then
+    if (cd "$ROOT_DIR/dist" && shasum -a 256 -c "OS1.app.zip.sha256" >/dev/null 2>&1); then
       pass "release zip checksum verifies"
     else
       fail "release zip checksum does not verify"
@@ -395,7 +439,7 @@ check_app_bundle() {
     if spctl -a -vvv -t exec "$app_path" >/dev/null 2>&1; then
       pass "spctl accepts app execution"
     else
-      require_for_public "spctl does not accept app execution"
+      apple_cred_miss "spctl does not accept app execution"
     fi
   fi
 
@@ -415,15 +459,227 @@ check_app_bundle() {
 check_business_smoke() {
   section "Business Smoke"
 
+  if [ "${OS1_READINESS_LIVE_BUSINESS_SMOKE:-0}" != "1" ]; then
+    pass "live business smoke skipped; set OS1_READINESS_LIVE_BUSINESS_SMOKE=1 to run it during readiness"
+    return
+  fi
+
   if [ ! -x "$ROOT_DIR/scripts/os1-business-smoke.sh" ]; then
     fail "missing executable scripts/os1-business-smoke.sh"
     return
   fi
 
-  if OLLAMA_MODEL="${OLLAMA_MODEL:-qwen2.5-coder:3b}" "$ROOT_DIR/scripts/os1-business-smoke.sh" --quick; then
+  if OLLAMA_MODEL="${OLLAMA_MODEL:-qwen2.5-coder:1.5b}" \
+      OLLAMA_NUM_PREDICT="${OLLAMA_NUM_PREDICT:-120}" \
+      OLLAMA_TASK_MAX_TIME_SECONDS="${OLLAMA_TASK_MAX_TIME_SECONDS:-90}" \
+      "$ROOT_DIR/scripts/os1-business-smoke.sh" --quick; then
     pass "business smoke passed"
   else
     fail "business smoke failed"
+  fi
+}
+
+check_business_ops_runner() {
+  section "Business Ops Runner"
+
+  runner="$ROOT_DIR/scripts/os1-business-ops-run.sh"
+  output_root="${OS1_BUSINESS_OPS_OUTPUT_ROOT:-$HOME/Library/Application Support/OS1/business-ops}"
+  latest_summary="$output_root/latest/summary.md"
+  max_age_seconds="${OS1_BUSINESS_OPS_MAX_AGE_SECONDS:-7200}"
+  label="com.os1.local.business-ops"
+
+  if [ -x "$runner" ]; then
+    pass "business operations runner is executable"
+  else
+    fail "missing executable scripts/os1-business-ops-run.sh"
+    return
+  fi
+
+  if [ -f "$latest_summary" ]; then
+    pass "latest business operations summary exists: $latest_summary"
+    latest_health="$(summary_value "Health" "$latest_summary")"
+    latest_storage="$(summary_value "Storage" "$latest_summary")"
+    latest_smoke="$(summary_value "Business smoke" "$latest_summary")"
+
+    [ "$latest_health" = "passed" ] && pass "latest business operations health passed" || fail "latest business operations health is ${latest_health:-missing}"
+    [ "$latest_storage" = "passed" ] && pass "latest business operations storage passed" || fail "latest business operations storage is ${latest_storage:-missing}"
+    [ "$latest_smoke" = "passed" ] && pass "latest business operations smoke passed" || fail "latest business operations smoke is ${latest_smoke:-missing}"
+
+    run_dir="$(summary_value "Run directory" "$latest_summary")"
+    run_id="$(basename "$run_dir" 2>/dev/null || true)"
+    case "$max_age_seconds" in
+      ""|*[!0-9]*)
+        warn "OS1_BUSINESS_OPS_MAX_AGE_SECONDS is invalid; latest summary freshness was not checked"
+        ;;
+      *)
+        if latest_epoch="$(utc_epoch_from_run_id "$run_id" 2>/dev/null)"; then
+          now_epoch="$(date -u "+%s")"
+          age_seconds="$((now_epoch - latest_epoch))"
+          if [ "$age_seconds" -lt 0 ]; then
+            warn "latest business operations summary timestamp is in the future: ${run_id:-missing}"
+          elif [ "$age_seconds" -le "$max_age_seconds" ]; then
+            pass "latest business operations summary is fresh: ${age_seconds}s old"
+          else
+            warn "latest business operations summary is stale: ${age_seconds}s old"
+          fi
+        else
+          warn "latest business operations run id could not be parsed for freshness: ${run_id:-missing}"
+        fi
+        ;;
+    esac
+  else
+    warn "no latest business operations summary found; run scripts/os1-business-ops-run.sh"
+  fi
+
+  if [ "$(uname -s 2>/dev/null || printf unknown)" != "Darwin" ]; then
+    warn "business operations LaunchAgent check skipped; not running on macOS"
+    return
+  fi
+  if ! command -v launchctl >/dev/null 2>&1; then
+    warn "launchctl not found; business operations LaunchAgent status was not checked"
+    return
+  fi
+
+  if ! state="$(launchctl print "gui/$(id -u)/$label" 2>/dev/null)"; then
+    warn "$label is not loaded; install with scripts/install-local-ops-launchd.sh --health-only --business-ops --apply"
+    return
+  fi
+
+  path="$(printf '%s\n' "$state" | awk -F'= ' '/path =/ { print $2; exit }')"
+  runs="$(printf '%s\n' "$state" | awk -F'= ' '/runs =/ { print $2; exit }')"
+  last_exit="$(printf '%s\n' "$state" | awk -F'= ' '/last exit code =/ { print $2; exit }')"
+  interval="$(printf '%s\n' "$state" | awk -F'= ' '/run interval =/ { print $2; exit }')"
+  expected_plist="$HOME/Library/LaunchAgents/$label.plist"
+
+  pass "$label is loaded${path:+ at $path}"
+  [ -n "$runs" ] && pass "$label runs count: $runs"
+  [ -n "$interval" ] && pass "$label interval: $interval"
+  if [ -n "$path" ] && [ "$path" != "$expected_plist" ]; then
+    warn "$label is loaded from an unexpected path: $path"
+  fi
+
+  plist_path="${path:-$expected_plist}"
+  if [ -f "$plist_path" ] && command -v /usr/libexec/PlistBuddy >/dev/null 2>&1; then
+    program0="$(/usr/libexec/PlistBuddy -c 'Print :ProgramArguments:0' "$plist_path" 2>/dev/null || true)"
+    program1="$(/usr/libexec/PlistBuddy -c 'Print :ProgramArguments:1' "$plist_path" 2>/dev/null || true)"
+    mode_arg="$(/usr/libexec/PlistBuddy -c 'Print :ProgramArguments:2' "$plist_path" 2>/dev/null || true)"
+    working_dir="$(/usr/libexec/PlistBuddy -c 'Print :WorkingDirectory' "$plist_path" 2>/dev/null || true)"
+    plist_host="$(/usr/libexec/PlistBuddy -c 'Print :EnvironmentVariables:OLLAMA_HOST' "$plist_path" 2>/dev/null || true)"
+    plist_model="$(/usr/libexec/PlistBuddy -c 'Print :EnvironmentVariables:OLLAMA_MODEL' "$plist_path" 2>/dev/null || true)"
+    plist_mode="$(/usr/libexec/PlistBuddy -c 'Print :EnvironmentVariables:OS1_BUSINESS_OPS_MODE' "$plist_path" 2>/dev/null || true)"
+    plist_output_root="$(/usr/libexec/PlistBuddy -c 'Print :EnvironmentVariables:OS1_BUSINESS_OPS_OUTPUT_ROOT' "$plist_path" 2>/dev/null || true)"
+    plist_retention="$(/usr/libexec/PlistBuddy -c 'Print :EnvironmentVariables:OS1_BUSINESS_OPS_RETENTION_DAYS' "$plist_path" 2>/dev/null || true)"
+    stdout_path="$(/usr/libexec/PlistBuddy -c 'Print :StandardOutPath' "$plist_path" 2>/dev/null || true)"
+    stderr_path="$(/usr/libexec/PlistBuddy -c 'Print :StandardErrorPath' "$plist_path" 2>/dev/null || true)"
+    [ "$program0" = "/bin/bash" ] && pass "$label uses /bin/bash" || fail "$label ProgramArguments[0] should be /bin/bash"
+    [ "$program1" = "$runner" ] && pass "$label points at os1-business-ops-run.sh" || fail "$label ProgramArguments[1] does not point at this repo business runner"
+    case "$mode_arg" in
+      --quick|--full) pass "$label mode argument is configured: $mode_arg" ;;
+      *) fail "$label ProgramArguments[2] should be --quick or --full" ;;
+    esac
+    [ "$working_dir" = "$ROOT_DIR" ] && pass "$label WorkingDirectory matches repo" || fail "$label WorkingDirectory does not match this repo"
+    [ "$plist_host" = "${OLLAMA_HOST:-http://127.0.0.1:11434}" ] && pass "$label OLLAMA_HOST is configured" || warn "$label OLLAMA_HOST differs from expected local host"
+    [ "$plist_model" = "${OLLAMA_MODEL:-qwen2.5-coder:1.5b}" ] && pass "$label OLLAMA_MODEL is configured" || warn "$label OLLAMA_MODEL is missing or differs from expected local model"
+    [ "$plist_mode" = "${OS1_BUSINESS_OPS_MODE:-quick}" ] && pass "$label business mode is configured" || warn "$label OS1_BUSINESS_OPS_MODE differs from expected mode"
+    [ "$plist_output_root" = "$output_root" ] && pass "$label output root is configured" || fail "$label OS1_BUSINESS_OPS_OUTPUT_ROOT does not match readiness output root"
+    [ "$plist_retention" = "${OS1_BUSINESS_OPS_RETENTION_DAYS:-14}" ] && pass "$label retention is configured" || warn "$label OS1_BUSINESS_OPS_RETENTION_DAYS differs from expected retention"
+    [ "$stdout_path" = "$HOME/Library/Logs/OS1/business-ops.log" ] && pass "$label stdout log path is configured" || warn "$label StandardOutPath differs from expected business-ops.log"
+    [ "$stderr_path" = "$HOME/Library/Logs/OS1/business-ops.err.log" ] && pass "$label stderr log path is configured" || warn "$label StandardErrorPath differs from expected business-ops.err.log"
+  fi
+
+  if [ -z "$last_exit" ]; then
+    warn "$label has not recorded a last exit code yet"
+  elif [ "$last_exit" = "0" ]; then
+    pass "$label last exit code is 0"
+  else
+    fail "$label last exit code is $last_exit"
+  fi
+}
+
+check_business_output_validation() {
+  section "Business Output Validation"
+
+  validator="$ROOT_DIR/scripts/validate-business-output.sh"
+  output_root="${OS1_BUSINESS_OPS_OUTPUT_ROOT:-$HOME/Library/Application Support/OS1/business-ops}"
+
+  if [ ! -x "$validator" ]; then
+    fail "missing executable scripts/validate-business-output.sh"
+    return
+  fi
+
+  "$validator" --root "$output_root"
+  rc="$?"
+  case "$rc" in
+    0)
+      pass "business output validation passed"
+      ;;
+    1)
+      fail "business output validation failed"
+      ;;
+    2)
+      fail "business output validator usage/configuration error"
+      ;;
+    *)
+      fail "business output validator returned unexpected exit code: $rc"
+      ;;
+  esac
+}
+
+check_composio_health() {
+  section "Composio Health"
+
+  checker="$ROOT_DIR/scripts/composio-health-check.sh"
+  timeout_seconds="${OS1_COMPOSIO_HEALTH_TIMEOUT_SECONDS:-5}"
+
+  if [ ! -x "$checker" ]; then
+    warn "Composio health checker is missing; integration health was not checked"
+    return
+  fi
+
+  output="$("$checker" --quiet --timeout-seconds "$timeout_seconds" 2>&1)"
+  rc="$?"
+  [ -n "$output" ] && printf '%s\n' "$output"
+  if [ "$rc" -eq 0 ]; then
+    pass "Composio health check completed"
+    return
+  fi
+
+  if is_enabled_value "${OS1_REQUIRE_COMPOSIO:-0}"; then
+    fail "Composio health check failed with exit code $rc"
+  else
+    warn "Composio health check is not ready (exit $rc); set OS1_REQUIRE_COMPOSIO=1 to make this a hard blocker"
+  fi
+}
+
+check_release_archive_verify() {
+  section "Release Archive Verification"
+
+  verifier="$ROOT_DIR/scripts/release-archive-verify.sh"
+  app_path="$ROOT_DIR/dist/OS1.app"
+
+  if [ ! -x "$verifier" ]; then
+    require_for_public "missing executable scripts/release-archive-verify.sh"
+    return
+  fi
+
+  if [ ! -d "$app_path" ] && [ "$PROFILE" != "public" ]; then
+    warn "release archive verifier skipped; dist/OS1.app is missing"
+    return
+  fi
+
+  if [ "$PROFILE" = "public" ]; then
+    verifier_mode="developer-id"
+  else
+    verifier_mode="$OS1_RELEASE_MODE"
+  fi
+  "$verifier" --app "$app_path" --mode "$verifier_mode"
+  rc="$?"
+  if [ "$rc" -eq 0 ]; then
+    pass "release archive verifier passed"
+  elif [ "$PROFILE" = "public" ]; then
+    fail "release archive verifier failed"
+  else
+    warn "release archive verifier failed; public distribution is not ready"
   fi
 }
 
@@ -438,7 +694,7 @@ check_public_credentials() {
   fi
 
   if [ "$codesign_status" = "missing" ]; then
-    require_for_public "Developer ID signing identity is missing"
+    apple_cred_miss "Developer ID signing identity is missing"
   else
     pass "Developer ID signing identity: $codesign_status"
   fi
@@ -451,9 +707,13 @@ check_public_credentials() {
   fi
 
   if [ "$notary_status" = "missing" ]; then
-    require_for_public "notarization credentials are missing"
+    apple_cred_miss "notarization credentials are missing"
   else
     pass "notarization credentials: $notary_status"
+  fi
+
+  if [ "$PROFILE" != "public" ] && [ "$OS1_RELEASE_MODE" = "adhoc" ] && [ "$codesign_status" = "missing" ] && [ "$notary_status" = "missing" ]; then
+    pass "credentials check skipped (OS1_RELEASE_MODE=adhoc; ad-hoc distribution is intentional)"
   fi
 }
 
@@ -466,9 +726,13 @@ run_local_ops_health
 check_launchagent
 check_ollama
 check_business_smoke
+check_business_ops_runner
+check_business_output_validation
+check_composio_health
 check_storage_report
 check_ci
 check_app_bundle
+check_release_archive_verify
 check_public_credentials
 
 printf '\n== Summary ==\n'

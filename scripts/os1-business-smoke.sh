@@ -4,7 +4,7 @@ set -o pipefail 2>/dev/null || true
 
 SCRIPT_DIR="$(CDPATH= cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 ROOT_DIR="$(CDPATH= cd "$SCRIPT_DIR/.." && pwd -P)"
-MODEL="${OLLAMA_MODEL:-qwen2.5-coder:3b}"
+MODEL="${OLLAMA_MODEL:-qwen2.5-coder:1.5b}"
 NUM_PREDICT="${OLLAMA_NUM_PREDICT:-220}"
 TEMPERATURE="${OLLAMA_TEMPERATURE:-0.2}"
 OUTPUT_DIR=""
@@ -19,7 +19,7 @@ unless --output-dir is provided.
 
 Options:
   --quick           Run only the daily operations brief smoke.
-  --model MODEL     Ollama model. Default: qwen2.5-coder:3b.
+  --model MODEL     Ollama model. Default: qwen2.5-coder:1.5b.
   --output-dir DIR  Write each response as a Markdown file.
   -h, --help        Show this help.
 USAGE
@@ -72,6 +72,14 @@ trimmed_length() {
   awk 'BEGIN { n = 0 } { gsub(/[[:space:]]+/, " "); n += length($0) } END { print n }'
 }
 
+normalize_response() {
+  awk '
+    /^[[:space:]]*```/ { next }
+    NF { seen = 1; for (i = 1; i <= blank_count; i++) print blanks[i]; blank_count = 0; print; next }
+    seen { blank_count += 1; blanks[blank_count] = $0 }
+  '
+}
+
 slug_for_case() {
   case "$1" in
     "daily operations brief")
@@ -86,16 +94,26 @@ slug_for_case() {
   esac
 }
 
+disk_free_summary() {
+  if command -v df >/dev/null 2>&1; then
+    df -h "$ROOT_DIR" 2>/dev/null | awk 'NR == 2 { printf "%s free on %s (%s used)", $4, $6, $5; found = 1 } END { exit found ? 0 : 1 }' || printf 'unknown'
+  else
+    printf 'unknown'
+  fi
+}
+
 prompt_for_case() {
   case "$1" in
     "daily operations brief")
-      cat <<'PROMPT'
+      disk_status="$(disk_free_summary)"
+      cat <<PROMPT
 You are OS1 running locally for a small business operator.
 Create a compact daily operations brief from these signals:
 - local health monitor is green
-- disk has 57 GiB free
+- disk status: ${disk_status}
 - Azure is disabled
-- open risks: CUA driver installed but not running, public release not notarized
+- release mode: ad-hoc distribution is intentional; Developer ID notarization is deferred and is not a current blocker
+- open risks: CUA driver installed but not running; disk is below the 25 GiB local warning threshold if free space is under 25 GiB
 - today's focus: customer follow-up, invoice review, and project delivery
 
 Return exactly these four Markdown bullet lines and no other text:
@@ -218,6 +236,8 @@ run_case() {
     printf 'FAIL: %s smoke returned an empty response\n' "$name" >&2
     return 1
   fi
+
+  response="$(printf '%s\n' "$response" | normalize_response)"
 
   printf '%s\n' "$response"
 
