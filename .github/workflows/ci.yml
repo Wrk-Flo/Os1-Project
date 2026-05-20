@@ -16,6 +16,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          # need >= 2 so `git diff-tree --check HEAD` has a parent to diff
+          # against; default depth 1 makes HEAD look like a root commit and
+          # the --root branch flags every vendored file as "added".
+          fetch-depth: 2
 
       - name: Show Swift version
         run: swift --version
@@ -30,7 +35,11 @@ jobs:
 
       - name: Shell and runbook preflight
         run: |
-          git diff-tree --check --root --no-commit-id -r HEAD
+          # --root is dropped intentionally: it would flag every file in HEAD
+          # as "added" on a shallow checkout (depth 1), surfacing trailing
+          # whitespace in vendored code we don't control. With fetch-depth 2
+          # the parent exists and the real diff is checked instead.
+          git diff-tree --check --no-commit-id -r HEAD
           for script in \
             scripts/configure-cua-api-key.sh \
             scripts/install-local-ops-launchd.sh \
