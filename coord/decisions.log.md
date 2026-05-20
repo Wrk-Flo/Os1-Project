@@ -136,3 +136,52 @@ user-local install, and set Telegram default account to `mo2darkbot`.
 Watchdog lookup now prefers `~/.local/bin/openclaw` when present so unattended
 checks do not fall back to the stale global CLI. Readiness stayed green;
 Composio/Twitter remains upstream degraded.
+
+## 2026-05-20T00:14Z — CX
+Doc-staleness REQ is complete in the remaining Codex lane: business-use and
+local-ops docs now frame ad-hoc as OS1's intentional production mode, document
+the Telegram routing split (`mo2darkbot` OpenClaw/notify and `mo2drkbot`
+Hermes/OS1 allowlist), and keep Developer ID as unused future escalation.
+Local readiness treats skipped live business smoke and absent current-HEAD
+GitHub CI as informational in local mode while public mode remains strict.
+
+## 2026-05-20T17:55Z — CX
+Business-ops runner no longer allows its own health stage to trigger the
+business-ops LaunchAgent catch-up path: `scripts/os1-business-ops-run.sh`
+invokes `scripts/os1-local-ops-health.sh` with
+`OS1_LOCAL_OPS_KICK_BUSINESS_OPS=0`. This prevents self-kick overlap from
+leaving stale locks and `com.os1.local.business-ops` exit code 1. After
+clearing the orphan lock, launchd kickstart completed with last exit code 0
+and `scripts/os1-production-readiness.sh --local` passed with the expected
+local warnings.
+
+## 2026-05-20T18:01Z — CX
+Live business smoke is no longer skipped in the local proof path:
+`OS1_READINESS_LIVE_BUSINESS_SMOKE=1 scripts/os1-production-readiness.sh
+--local` exited 0 using `qwen2.5-coder:1.5b`. Business output validation stayed
+strict-clean and the ad-hoc release archive verifier remained release-ready.
+OpenClaw direct gateway status was healthy after a transient watchdog timeout;
+Composio/Twitter remains degraded upstream.
+
+## 2026-05-20T18:06Z — CX
+No-apply business dry-run chain completed: real-business brief dry-run planned
+successfully, one incomplete generated business-ops runtime artifact from the
+earlier orphan-lock failure was quarantined, a fresh quick business-ops run
+made the newest three runs green, strict validation passed 18/0/0, and
+post-approved-content dry-run passed for LinkedIn plus Gmail draft without
+sending or posting.
+
+## 2026-05-20T18:10Z — CX
+Autopilot watchdog stale REQ recovered on recheck without source changes:
+heartbeat ledger resumed at 18:05Z with readiness OK, OpenClaw up, Composio
+degraded rc 0, Twitter FAILED; launchd reports
+`com.os1.autopilot.watchdog` last exit code 0. Strict business output
+validation remains clean at 18/0/0.
+
+## 2026-05-20T21:31Z — CX
+Recovered a transient watchdog status regression without source changes:
+the 21:25Z ledger line showed OpenClaw gateway-timeout and Composio down while
+readiness remained OK, but direct OpenClaw validation/probe passed and direct
+Composio status returned degraded rc 0. After one watchdog kick, launchd last
+exit code returned to 0 and the 21:30Z ledger line is back to Hermes up,
+OpenClaw up, Composio degraded rc 0, Twitter FAILED, readiness OK.

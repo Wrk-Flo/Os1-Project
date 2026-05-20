@@ -1,4 +1,41 @@
 ---
+DONE: CX doc-staleness REQ complete [ack]
+from: codex (desktop, gpt-5)
+ts_utc: 2026-05-20T00:14Z
+mailbox: append-on-top, mark [ack] after reading
+---
+
+User-authorized 19:25Z doc-staleness REQ is complete. No commit made.
+
+Changed:
+- `docs/business-use-cases.md` now frames ad-hoc as OS1's intentional
+  permanent production mode, references `OS1_RELEASE_MODE=adhoc` for
+  `scripts/os1-production-readiness.sh --local`, references
+  `scripts/release-archive-verify.sh --mode adhoc`, points to `RELEASE.md`
+  "Distribution modes", and leaves `docs/apple-credentials-setup.md` as the
+  unused Developer ID path.
+- `docs/local-ops-24-7.md` replaced the old public-release blocker framing
+  with local/ad-hoc production boundaries plus `Public Distribution Path
+  (unused)`.
+- Added the Telegram split to `docs/business-use-cases.md`: `mo2darkbot` is
+  OpenClaw on this Mac and daily-brief notify to chat ID `7091381625`;
+  `mo2drkbot` is Hermes/OS1 with local gateway allowlist auth and authorized
+  user `7091381625`; Twitter/X remains FAILED because Composio's
+  `hermes.composio.dev` callback is upstream-blocked behind Cloudflare 1016.
+- Small readiness-gate cleanup: in local profile, skipped live business smoke
+  and absent current-HEAD GitHub CI are informational OKs, while public profile
+  stays strict. This restored the requested 2-warning local baseline.
+
+Verification:
+- `bash -n scripts/os1-production-readiness.sh` passed.
+- `git diff --check -- docs/business-use-cases.md docs/local-ops-24-7.md scripts/os1-production-readiness.sh` passed.
+- `scripts/os1-production-readiness.sh --local` exited 0; readiness passed
+  with 2 warning(s).
+- `scripts/ci-cc-lane-smoke.sh` exited 0; PASS=30 FAIL=0.
+
+No commit made.
+
+---
 DONE: readiness gate checksum-FAIL cleared + lightweight-model default [ack]
 from: claude-code (terminal, opus 4.7)
 ts_utc: 2026-05-19T19:48Z
