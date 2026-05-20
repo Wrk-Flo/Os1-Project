@@ -6,7 +6,7 @@ import SwiftUI
 ///   - `.unconfigured`: paste BotFather token; auto-detect existing
 ///     install on the active host
 ///   - `.configured`: bot identity card + per-host install state +
-///     pairing code approval
+///     allowed-user routing
 struct MessagingView: View {
     @ObservedObject var viewModel: MessagingViewModel
     @EnvironmentObject private var appState: AppState
@@ -145,7 +145,7 @@ struct MessagingView: View {
                 Text(L10n.string("Three steps, ~30 seconds"))
                     .os1Style(theme.typography.bodyEmphasis)
                     .foregroundStyle(theme.palette.onCoralPrimary)
-                Text(L10n.string("1. In Telegram, message @BotFather → /newbot → copy the token. 2. Paste it below; OS1 validates it against api.telegram.org. 3. After saving, OS1 writes it to the active host's ~/.hermes/.env and starts the gateway. DM your bot to register yourself with a pairing code — no need to look up your numeric Telegram ID."))
+                Text(L10n.string("1. In Telegram, message @BotFather → /newbot → copy the token. 2. Paste it below; OS1 validates it against api.telegram.org. 3. Add allowed Telegram user IDs, then install to write ~/.hermes/.env and start the gateway."))
                     .os1Style(theme.typography.body)
                     .foregroundStyle(theme.palette.onCoralSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -287,8 +287,6 @@ struct MessagingView: View {
                 botIdentityCard
 
                 vmInstallPanel
-
-                pairingPanel
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 22)
@@ -334,30 +332,30 @@ struct MessagingView: View {
         if let connection = appState.activeConnection {
             HermesSurfacePanel(
                 title: L10n.string("Install on this host"),
-                subtitle: L10n.string("Writes TELEGRAM_BOT_TOKEN to ~/.hermes/.env on %@ and runs `hermes gateway start` so the agent picks up Telegram messages right away.", connection.label.isEmpty ? L10n.string("active host") : connection.label)
+                subtitle: L10n.string("Writes TELEGRAM_BOT_TOKEN and allowed user IDs to ~/.hermes/.env on %@, then starts the gateway so the agent picks up Telegram messages right away.", connection.label.isEmpty ? L10n.string("active host") : connection.label)
             ) {
                 VStack(alignment: .leading, spacing: 14) {
-                    Toggle(isOn: $viewModel.useDMPairing) {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "person.crop.circle.badge.checkmark")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(theme.palette.onCoralPrimary)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(L10n.string("DM Pairing"))
+                            Text(L10n.string("Allowed users"))
                                 .os1Style(theme.typography.body)
                                 .foregroundStyle(theme.palette.onCoralPrimary)
-                            Text(L10n.string("Recommended. After install, DM your bot — it replies with a one-time pairing code that you approve below."))
+                            Text(L10n.string("Current Hermes direct-message routing uses TELEGRAM_ALLOWED_USERS. Pairing codes are not required for this runtime."))
                                 .os1Style(theme.typography.smallCaps)
                                 .foregroundStyle(theme.palette.onCoralMuted)
                         }
                     }
-                    .tint(theme.palette.onCoralPrimary)
 
-                    if !viewModel.useDMPairing {
-                        EditorField(label: L10n.string("Allowed Telegram user IDs (comma-separated)")) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                TextField(L10n.string("123456789, 987654321"), text: $viewModel.allowedUsersDraft)
-                                    .os1Underlined()
-                                Text(L10n.string("Get yours by messaging @userinfobot in Telegram."))
-                                    .os1Style(theme.typography.smallCaps)
-                                    .foregroundStyle(theme.palette.onCoralMuted)
-                            }
+                    EditorField(label: L10n.string("Allowed Telegram user IDs (comma-separated)")) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            TextField(L10n.string("123456789, 987654321"), text: $viewModel.allowedUsersDraft)
+                                .os1Underlined()
+                            Text(L10n.string("Get yours by messaging @userinfobot in Telegram, or keep the existing host allowlist when refreshing an installed gateway."))
+                                .os1Style(theme.typography.smallCaps)
+                                .foregroundStyle(theme.palette.onCoralMuted)
                         }
                     }
 
@@ -446,46 +444,6 @@ struct MessagingView: View {
         switch viewModel.installState {
         case .checking, .installing: return true
         default: return false
-        }
-    }
-
-    @ViewBuilder
-    private var pairingPanel: some View {
-        if let connection = appState.activeConnection,
-           viewModel.useDMPairing,
-           case .installed = viewModel.installState {
-            HermesSurfacePanel(
-                title: L10n.string("Approve pairing code"),
-                subtitle: L10n.string("DM your new bot from Telegram. It replies with a one-time code like XKGH5N7P. Paste it here to whitelist that user — no numeric IDs required.")
-            ) {
-                VStack(alignment: .leading, spacing: 14) {
-                    EditorField(label: L10n.string("Pairing code")) {
-                        TextField(L10n.string("XKGH5N7P"), text: $viewModel.pairingCode)
-                            .os1Underlined()
-                            .textCase(.uppercase)
-                    }
-
-                    if let message = viewModel.pairingActionMessage {
-                        Text(message)
-                            .os1Style(theme.typography.body)
-                            .foregroundStyle(theme.palette.onCoralPrimary)
-                            .padding(10)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(theme.palette.onCoralPrimary.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
-                    }
-
-                    HStack {
-                        Spacer()
-                        Button {
-                            Task { await viewModel.approvePairingCode(connection: connection) }
-                        } label: {
-                            Text(L10n.string("Approve"))
-                        }
-                        .buttonStyle(.os1Primary)
-                        .disabled(viewModel.pairingCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    }
-                }
-            }
         }
     }
 

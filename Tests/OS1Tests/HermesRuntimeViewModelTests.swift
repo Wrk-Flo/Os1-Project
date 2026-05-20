@@ -111,7 +111,13 @@ struct HermesRuntimeViewModelTests {
             ]
         )
 
-        let snapshot = HermesRuntimeHealthSnapshot(runtimeStatus: runtimeStatus)
+        let snapshot = HermesRuntimeHealthSnapshot(
+            runtimeStatus: runtimeStatus,
+            cuaAvailability: .ready(
+                hermesPath: "/Users/test/.local/bin/hermes",
+                cuaDriverPath: "/Users/test/.local/bin/cua-driver"
+            )
+        )
 
         #expect(snapshot.cli.level == .ready)
         #expect(snapshot.hermesHome.level == .ready)
@@ -122,7 +128,35 @@ struct HermesRuntimeViewModelTests {
         #expect(snapshot.normalizedComponents.first { $0.kind == .cron }?.level == .ready)
         #expect(snapshot.normalizedComponents.first { $0.kind == .models }?.level == .ready)
         #expect(snapshot.normalizedComponents.first { $0.kind == .gateway }?.level == .ready)
+        #expect(snapshot.normalizedComponents.first { $0.kind == .cua }?.level == .ready)
+        #expect(snapshot.normalizedComponents.first { $0.kind == .cua }?.displayValue == "Prereqs ready")
         #expect(snapshot.overallLevel == .ready)
+    }
+
+    @Test
+    func runtimeStatusSnapshotReportsCuaAvailabilityWhenHermesHomeIsMissing() {
+        let runtimeStatus = HermesRuntimeStatus(
+            executable: HermesRuntimeExecutable(path: "/Users/test/.local/bin/hermes", source: .fallback),
+            version: HermesRuntimeVersion(label: "Hermes Agent v0.14.0", exitCode: 0, stderr: ""),
+            home: HermesRuntimeHome(path: "/Users/test/.hermes-missing", source: .default, exists: false),
+            config: HermesRuntimeConfigStatus(files: []),
+            model: nil,
+            update: HermesRuntimeUpdateStatus(state: .unknown, source: .cache, cache: nil, message: nil),
+            localModelServers: []
+        )
+
+        let snapshot = HermesRuntimeHealthSnapshot(
+            runtimeStatus: runtimeStatus,
+            cuaAvailability: .ready(
+                hermesPath: "/Users/test/.local/bin/hermes",
+                cuaDriverPath: "/Users/test/.local/bin/cua-driver"
+            )
+        )
+
+        #expect(snapshot.hermesHome.level == .unavailable)
+        #expect(snapshot.normalizedComponents.first { $0.kind == .memory }?.level == .unavailable)
+        #expect(snapshot.normalizedComponents.first { $0.kind == .cua }?.level == .ready)
+        #expect(snapshot.normalizedComponents.first { $0.kind == .cua }?.displayValue == "Prereqs ready")
     }
 
     @Test

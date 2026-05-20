@@ -101,8 +101,8 @@ final class AppState: ObservableObject {
     @Published var pendingSectionSelection: AppSection?
     @Published var showDiscardChangesAlert = false
     @Published var pendingNewConnectionEditorRequestID: UUID?
-    @Published var isRealtimeVoiceEnabled = true
-    @Published var realtimeVoiceStatus = "starting"
+    @Published var isRealtimeVoiceEnabled = false
+    @Published var realtimeVoiceStatus = "off"
 
     let connectionStore: ConnectionStore
     let sshTransport: SSHTransport
@@ -112,6 +112,7 @@ final class AppState: ObservableObject {
     let orgoHermesInstaller: OrgoHermesInstaller
     let desktopEndpointResolver: any DesktopEndpointResolving
     let cuaCredentialStore: CuaCredentialStore
+    let cuaComputerSessionProvider: CuaComputerSessionProvider
     let computerSessionService: ComputerSessionService
     let hermesUpdater: HermesUpdater
     let hermesRuntimeService: HermesRuntimeService
@@ -175,12 +176,13 @@ final class AppState: ObservableObject {
         let orgoHermesInstaller = OrgoHermesInstaller(transport: orgoTransport)
         let desktopEndpointResolver = OrgoDesktopEndpointResolver(orgoTransport: orgoTransport)
         let cuaCredentialStore = CuaCredentialStore()
+        let cuaComputerSessionProvider = CuaComputerSessionProvider(
+            config: CuaComputerSessionConfig(isEnabled: true, allowsLocalHermesStart: false),
+            credentialStore: cuaCredentialStore
+        )
         let computerSessionService = ComputerSessionService(
             providers: [
-                CuaComputerSessionProvider(
-                    config: CuaComputerSessionConfig(isEnabled: false),
-                    credentialStore: cuaCredentialStore
-                )
+                cuaComputerSessionProvider
             ]
         )
         let transport = MultiplexedRemoteTransport(ssh: sshTransport, orgo: orgoTransport)
@@ -195,6 +197,7 @@ final class AppState: ObservableObject {
         self.orgoHermesInstaller = orgoHermesInstaller
         self.desktopEndpointResolver = desktopEndpointResolver
         self.cuaCredentialStore = cuaCredentialStore
+        self.cuaComputerSessionProvider = cuaComputerSessionProvider
         self.computerSessionService = computerSessionService
         self.hermesUpdater = hermesUpdater
         self.hermesRuntimeService = hermesRuntimeService
@@ -357,6 +360,10 @@ final class AppState: ObservableObject {
         if activeConnectionID != nil {
             selectedSection = .overview
         }
+    }
+
+    var cuaComputerSessionAvailability: CuaComputerSessionAvailability {
+        cuaComputerSessionProvider.availability
     }
 
     var activeConnection: ConnectionProfile? {

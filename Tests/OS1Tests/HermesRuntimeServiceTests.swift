@@ -109,6 +109,50 @@ struct HermesRuntimeServiceTests {
     }
 
     @Test
+    func statusReportsOpenRouterModelSelectionFromHermesConfig() async throws {
+        let sandbox = try HermesRuntimeTestSandbox()
+        defer { sandbox.remove() }
+
+        let bin = sandbox.root.appendingPathComponent("bin")
+        try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+        _ = try sandbox.writeExecutable(at: bin.appendingPathComponent("hermes"))
+
+        let hermesHome = sandbox.home.appendingPathComponent(".hermes")
+        try FileManager.default.createDirectory(at: hermesHome, withIntermediateDirectories: true)
+        try sandbox.write(
+            """
+            model:
+              api_mode: chat_completions
+              base_url: https://openrouter.ai/api/v1
+              default: z-ai/glm-4.5-air:free
+              provider: custom
+            providers:
+              ollama-launch:
+                default_model: qwen2.5-coder:3b
+            """,
+            to: hermesHome.appendingPathComponent("config.yaml")
+        )
+
+        let runner = FakeHermesRuntimeProcessRunner(results: [
+            .success(HermesRuntimeProcessResult(stdout: "Hermes Agent v1.0.0", stderr: "", exitCode: 0))
+        ])
+        let service = HermesRuntimeService(
+            processRunner: runner,
+            environment: ["PATH": bin.path, "HOME": sandbox.home.path],
+            homeDirectory: sandbox.home,
+            candidateExecutablePaths: [],
+            localModelServers: [],
+            localModelProbe: FakeHermesLocalModelProbe()
+        )
+
+        let status = await service.status(includeLocalModelServers: false)
+
+        #expect(status.model?.provider == "custom")
+        #expect(status.model?.defaultModel == "z-ai/glm-4.5-air:free")
+        #expect(status.model?.baseURL == "https://openrouter.ai/api/v1")
+    }
+
+    @Test
     func environmentHermesHomeOverridesDefaultAndExpandsTilde() async throws {
         let sandbox = try HermesRuntimeTestSandbox()
         defer { sandbox.remove() }

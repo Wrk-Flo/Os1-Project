@@ -275,6 +275,7 @@ struct RootView: View {
         case .runtime:
             HermesRuntimeView(
                 status: appState.hermesRuntimeStatus,
+                cuaAvailability: appState.cuaComputerSessionAvailability,
                 errorMessage: appState.hermesRuntimeError,
                 isRefreshing: appState.isRefreshingHermesRuntimeStatus,
                 refresh: {

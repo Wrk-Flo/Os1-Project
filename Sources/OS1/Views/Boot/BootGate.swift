@@ -16,10 +16,12 @@ struct BootGate<Content: View>: View {
 
     init(@ViewBuilder content: @escaping () -> Content) {
         self.content = content
-        // Dev escape hatch: `OS1_SKIP_BOOT=1` skips the animation so test
-        // harnesses and tight build/run cycles are not gated by the intro.
-        let envSkip = ProcessInfo.processInfo.environment["OS1_SKIP_BOOT"] == "1"
-        _bootFinished = State(initialValue: envSkip)
+        let environment = ProcessInfo.processInfo.environment
+        _bootFinished = State(initialValue: !BootAnimationLaunchPolicy.shouldStartBootAnimation(
+            environment: environment,
+            physicalMemoryBytes: ProcessInfo.processInfo.physicalMemory,
+            userDefaultsSkip: false
+        ))
     }
 
     var body: some View {
@@ -39,6 +41,25 @@ struct BootGate<Content: View>: View {
                 .zIndex(1)
             }
         }
+    }
+}
+
+enum BootAnimationLaunchPolicy {
+    static let lowMemoryThresholdBytes: UInt64 = 9 * 1024 * 1024 * 1024
+
+    static func shouldStartBootAnimation(
+        environment: [String: String],
+        physicalMemoryBytes: UInt64,
+        userDefaultsSkip: Bool
+    ) -> Bool {
+        if environment["OS1_SKIP_BOOT"] == "1" || userDefaultsSkip {
+            return false
+        }
+        if physicalMemoryBytes <= lowMemoryThresholdBytes,
+           environment["OS1_ENABLE_BOOT_ANIMATION"] != "1" {
+            return false
+        }
+        return true
     }
 }
 

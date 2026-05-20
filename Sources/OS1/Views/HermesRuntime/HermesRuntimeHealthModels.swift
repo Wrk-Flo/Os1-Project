@@ -348,12 +348,18 @@ struct HermesRuntimeHealthSnapshot: Codable, Equatable, Sendable {
 }
 
 extension HermesRuntimeHealthSnapshot {
-    init(runtimeStatus status: HermesRuntimeStatus) {
+    init(
+        runtimeStatus status: HermesRuntimeStatus,
+        cuaAvailability: CuaComputerSessionAvailability? = nil
+    ) {
         self.init(
             cli: HermesRuntimeCLIStatus(runtimeStatus: status),
             hermesHome: HermesRuntimeHomeStatus(runtimeHome: status.home),
             activeSelection: HermesRuntimeActiveSelection(runtimeModel: status.model),
-            components: HermesRuntimeComponentStatus.components(runtimeStatus: status),
+            components: HermesRuntimeComponentStatus.components(
+                runtimeStatus: status,
+                cuaAvailability: cuaAvailability
+            ),
             scopeLabel: "Local Hermes runtime",
             checkedAt: Date()
         )
@@ -410,10 +416,16 @@ private extension HermesRuntimeActiveSelection {
 }
 
 private extension HermesRuntimeComponentStatus {
-    static func components(runtimeStatus status: HermesRuntimeStatus) -> [HermesRuntimeComponentStatus] {
+    static func components(
+        runtimeStatus status: HermesRuntimeStatus,
+        cuaAvailability: CuaComputerSessionAvailability?
+    ) -> [HermesRuntimeComponentStatus] {
         guard status.home.exists else {
             return Kind.allCases.map { kind in
-                .missing(kind, detail: "HERMES_HOME is not available.")
+                if kind == .cua {
+                    return cuaStatus(cuaAvailability)
+                }
+                return HermesRuntimeComponentStatus.missing(kind, detail: "HERMES_HOME is not available.")
             }
         }
 
@@ -434,12 +446,42 @@ private extension HermesRuntimeComponentStatus {
             ),
             modelsStatus(runtimeStatus: status),
             gatewayStatus(runtimeStatus: status),
-            HermesRuntimeComponentStatus(
+            cuaStatus(cuaAvailability),
+        ]
+    }
+
+    static func cuaStatus(_ availability: CuaComputerSessionAvailability?) -> HermesRuntimeComponentStatus {
+        guard let availability else {
+            return HermesRuntimeComponentStatus(
                 kind: .cua,
                 value: "Optional",
                 detail: "CUA remains opt-in; run Hermes computer-use setup before enabling local computer sessions."
-            ),
-        ]
+            )
+        }
+
+        switch availability.state {
+        case .ready:
+            return .ready(
+                .cua,
+                value: "Prereqs ready",
+                detail: "Hermes and cua-driver are installed. Local computer-use start remains gated until explicitly enabled.",
+                path: availability.cuaDriverPath
+            )
+        case .disabled:
+            return HermesRuntimeComponentStatus(
+                kind: .cua,
+                level: .unknown,
+                value: "Gated",
+                detail: availability.message
+            )
+        case .unsupportedPlatform, .missingHermesCLI, .missingCuaDriver:
+            return .missing(
+                .cua,
+                value: "Setup needed",
+                detail: [availability.message, availability.installHint].compactMap { $0 }.joined(separator: " "),
+                path: availability.cuaDriverPath ?? availability.hermesPath
+            )
+        }
     }
 
     static func memoryStatus(runtimeStatus status: HermesRuntimeStatus) -> HermesRuntimeComponentStatus {

@@ -2,17 +2,20 @@ import SwiftUI
 
 struct HermesRuntimeView: View {
     let status: HermesRuntimeStatus?
+    let cuaAvailability: CuaComputerSessionAvailability?
     let errorMessage: String?
     let isRefreshing: Bool
     let refresh: () -> Void
 
     init(
         status: HermesRuntimeStatus?,
+        cuaAvailability: CuaComputerSessionAvailability? = nil,
         errorMessage: String?,
         isRefreshing: Bool,
         refresh: @escaping () -> Void
     ) {
         self.status = status
+        self.cuaAvailability = cuaAvailability
         self.errorMessage = errorMessage
         self.isRefreshing = isRefreshing
         self.refresh = refresh
@@ -34,7 +37,10 @@ struct HermesRuntimeView: View {
 
                 if let status {
                     HermesRuntimeHealthPanel(
-                        snapshot: HermesRuntimeHealthSnapshot(runtimeStatus: status)
+                        snapshot: HermesRuntimeHealthSnapshot(
+                            runtimeStatus: status,
+                            cuaAvailability: cuaAvailability
+                        )
                     )
                 } else if isRefreshing {
                     HermesSurfacePanel {

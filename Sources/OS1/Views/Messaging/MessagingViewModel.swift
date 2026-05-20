@@ -33,7 +33,7 @@ final class MessagingViewModel: ObservableObject {
     @Published private(set) var step: SetupStep = .loading
     @Published var tokenDraft: String = ""
     @Published var allowedUsersDraft: String = ""
-    @Published var useDMPairing: Bool = true   // toggle: pairing flow on by default
+    @Published var useDMPairing: Bool = false
     @Published var pairingCode: String = ""
     @Published var formError: String?
     @Published var isBusy = false
@@ -256,7 +256,7 @@ final class MessagingViewModel: ObservableObject {
             let result = try await installer.install(
                 on: connection,
                 token: token,
-                allowedUsers: useDMPairing ? nil : allowedUsersDraft
+                allowedUsers: allowedUsersDraft
             )
             if result.success {
                 installState = .installed(online: result.isGatewayOnline)
