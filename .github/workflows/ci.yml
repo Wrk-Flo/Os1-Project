@@ -28,8 +28,49 @@ jobs:
           python -m pip install PyYAML
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
+      - name: Shell and runbook preflight
+        run: |
+          git diff-tree --check --root --no-commit-id -r HEAD
+          for script in \
+            scripts/configure-cua-api-key.sh \
+            scripts/install-local-ops-launchd.sh \
+            scripts/manage-cua-driver.sh \
+            scripts/composio-health-check.sh \
+            scripts/ollama-task.sh \
+            scripts/os1-business-ops-run.sh \
+            scripts/os1-local-ops-health.sh \
+            scripts/os1-production-readiness.sh \
+            scripts/release-archive-verify.sh
+          do
+            bash -n "$script"
+          done
+          scripts/install-local-ops-launchd.sh --health-only --business-ops --no-load
+          composio_rc=0
+          scripts/composio-health-check.sh --quiet || composio_rc="$?"
+          if [ "$composio_rc" -ne 0 ]; then
+            if [ "$composio_rc" -ne 3 ]; then
+              exit "$composio_rc"
+            fi
+            echo "Composio credentials absent; checker contract verified without live credentials."
+          fi
+
       - name: Test
         run: swift test
 
-      - name: Build app bundle
-        run: HERMES_MAC_ARCHS=arm64 ./scripts/build-macos-app.sh
+      - name: CC-lane smoke
+        run: scripts/ci-cc-lane-smoke.sh
+
+      - name: Package release archive
+        run: |
+          HERMES_MAC_ARCHS=arm64 ./scripts/package-github-release.sh
+          (cd dist && shasum -a 256 -c OS1.app.zip.sha256)
+          codesign --verify --deep --strict dist/OS1.app
+          scripts/release-archive-verify.sh --mode adhoc --app dist/OS1.app
+
+      - name: Upload release smoke artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: os1-app-adhoc-release-smoke
+          path: |
+            dist/OS1.app.zip
+            dist/OS1.app.zip.sha256

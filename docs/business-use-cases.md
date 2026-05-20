@@ -10,13 +10,16 @@ trusting long-running sessions.
 - OS1 repo and app build scripts
 - Hermes Agent CLI under `~/.local/bin/hermes`
 - Ollama on `http://127.0.0.1:11434`
-- `qwen2.5-coder:3b` for the default local model
+- `qwen2.5-coder:1.5b` for the default local fallback model
 - OS1 health LaunchAgent for 24/7 monitoring
 - Optional CUA driver for guarded computer-use workflows
+- Optional CUA API key stored in the OS1 Keychain slot
 
 Check the baseline:
 
 ```sh
+scripts/configure-cua-api-key.sh --status
+scripts/manage-cua-driver.sh status
 scripts/os1-local-ops-health.sh
 scripts/os1-production-readiness.sh --local
 ```
@@ -121,7 +124,13 @@ Do not run unattended CUA flows that can send messages, move money, delete
 files, change production services, or alter credentials.
 
 Current known state: `cua-driver` is installed, but a running CUA driver process
-is optional and may be absent until needed.
+is optional and may be absent until needed. Check the CUA API key using status
+words only:
+
+```sh
+scripts/configure-cua-api-key.sh --status
+scripts/manage-cua-driver.sh status
+```
 
 ## Safety Boundaries
 
@@ -142,11 +151,25 @@ scripts/os1-business-smoke.sh --quick
 scripts/os1-production-readiness.sh --local
 ```
 
-Before public release:
+For the intentional OS1 production release path:
 
 ```sh
-scripts/os1-production-readiness.sh --public
+OS1_RELEASE_MODE=adhoc scripts/os1-production-readiness.sh --local
+scripts/release-archive-verify.sh --mode adhoc
 ```
 
-The public gate is expected to fail until Developer ID signing and notarization
-are configured.
+Ad-hoc distribution is the permanent production mode for OS1. The readiness
+gate defaults to `OS1_RELEASE_MODE=adhoc`, and the release archive verifier
+uses the same default unless a different mode is passed. See `RELEASE.md`
+"Distribution modes" for the current ad-hoc workflow. The unused Developer ID
+and notarization path remains documented in `docs/apple-credentials-setup.md`
+for a later paid Apple Developer Program escalation, but it is not the goal or
+a prerequisite for OS1 production.
+
+Telegram routing note: `mo2darkbot` is the primary OpenClaw chat bot on this
+Mac and uses OpenRouter `z-ai/glm-4.5-air:free`; daily brief notifications
+also route through `mo2darkbot` to chat ID `7091381625`. `mo2drkbot` belongs to
+Hermes/OS1; its gateway runs locally with allowlist auth, and the currently
+authorized user is `7091381625`. Twitter/X remains failed because Composio's
+internal OAuth callback host `hermes.composio.dev` is upstream-blocked behind
+Cloudflare 1016; there is no OS1-side action until Composio fixes the host.
