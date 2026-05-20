@@ -22,3 +22,7 @@ DerivedData/
 *.cer
 *.crt
 .worktrace/
+
+# Symlink to dist/OS1.app.zip created by scripts/package-github-release.sh
+# so the readiness gate can verify dist/OS1.app.zip.sha256 from repo root.
+/OS1.app.zip

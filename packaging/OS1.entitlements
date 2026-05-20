@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  OS1 hardened runtime entitlements.
+
+  Goal: pass Apple notarization with the strictest hardened runtime that still
+  allows a SwiftUI/AppKit app to function. We explicitly OMIT every "disable
+  hardened runtime protection" entitlement (allow-unsigned-executable-memory,
+  disable-library-validation, allow-dyld-environment-variables, debugger,
+  get-task-allow). Their absence is the secure default — adding them weakens
+  hardening and is rejected by notarization without an explicit Apple-approved
+  reason.
+
+  If a future feature requires one of those exceptions (e.g. a JIT runtime),
+  add it here with a comment justifying the exception AND re-notarize.
+
+  Reference: https://developer.apple.com/documentation/security/hardened_runtime
+-->
+<plist version="1.0">
+<dict>
+    <!-- Apple Events: OS1 drives other macOS apps via the CUA automation
+         pipeline (AppleScript / AX). Required for `mcp__apple__*` style
+         automation against Calendar/Mail/Reminders/Finder. Without this, the
+         hardened runtime blocks NSAppleScript / AEDeterminePermissionToAutomateTarget. -->
+    <key>com.apple.security.automation.apple-events</key>
+    <true/>
+</dict>
+</plist>

@@ -17,9 +17,15 @@ create_archive() {
 
 write_checksum() {
     (
-        cd "$ROOT_DIR"
-        shasum -a 256 "dist/OS1.app.zip" > "$SHA256_PATH"
+        # Record the bare archive name so `shasum -a 256 -c OS1.app.zip.sha256`
+        # works from the directory an end user downloads both files into.
+        cd "$ROOT_DIR/dist"
+        shasum -a 256 "OS1.app.zip" > "$SHA256_PATH"
     )
+    # Also drop a sibling symlink at the project root pointing at the dist zip
+    # so the readiness gate's `shasum -c dist/OS1.app.zip.sha256` (run from
+    # project root) finds the bare `OS1.app.zip` reference in the .sha256.
+    ln -sf "dist/OS1.app.zip" "$ROOT_DIR/OS1.app.zip"
 }
 
 require_developer_id_signature() {
@@ -40,8 +46,13 @@ require_developer_id_signature() {
 }
 
 notarytool_auth_args() {
-    if [[ -n "${OS1_NOTARY_KEYCHAIN_PROFILE:-}" ]]; then
-        printf '%s\0%s\0' --keychain-profile "$OS1_NOTARY_KEYCHAIN_PROFILE"
+    # OS1_NOTARY_PROFILE is the canonical keychain-profile name shared with
+    # scripts/notarize-os1-app.sh and docs/apple-credentials-setup.md.
+    # OS1_NOTARY_KEYCHAIN_PROFILE is accepted for back-compat with older
+    # RELEASE.md examples.
+    local keychain_profile="${OS1_NOTARY_KEYCHAIN_PROFILE:-${OS1_NOTARY_PROFILE:-}}"
+    if [[ -n "$keychain_profile" ]]; then
+        printf '%s\0%s\0' --keychain-profile "$keychain_profile"
         if [[ -n "${OS1_NOTARY_KEYCHAIN:-}" ]]; then
             printf '%s\0%s\0' --keychain "$OS1_NOTARY_KEYCHAIN"
         fi
@@ -57,7 +68,7 @@ notarytool_auth_args() {
     fi
 
     echo "error: missing notarization credentials." >&2
-    echo "Use OS1_NOTARY_KEYCHAIN_PROFILE, or OS1_NOTARY_KEY plus OS1_NOTARY_KEY_ID and optional OS1_NOTARY_ISSUER." >&2
+    echo "Use OS1_NOTARY_PROFILE (keychain profile, same var as scripts/notarize-os1-app.sh), or OS1_NOTARY_KEY plus OS1_NOTARY_KEY_ID and optional OS1_NOTARY_ISSUER." >&2
     exit 1
 }
 
