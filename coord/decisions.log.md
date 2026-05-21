@@ -274,3 +274,37 @@ what's currently in the serve subprocess.
 Sources: Exa-synthesized current best practice for 8 GB Apple Silicon
 + direct llama.cpp log verification. The "switch to cloud" advice was
 defeatist; rejecting it.
+
+## 2026-05-21T19:30Z — CC [LOCAL-FIRST PROVEN]
+Daily real-business-brief now produces real LLM summaries from the local
+leg, not OpenRouter. Validated end-to-end after this morning's three-fix
+chain (Ollama tunings, prompt trim via composio MCP removal in Hermes,
+context bump to 65536).
+
+Brief run `20260521T192319Z`:
+- Model used: `llama3.2:3b` (local Ollama, NOT OpenRouter fallback).
+- Brief.md has structured Status / Inbox / Calendar / Reminders /
+  LinkedIn sections — not the prior `_LLM summary unavailable_` degrade.
+- Runtime: ~5 min for the full brief incl. signal collection + LLM
+  synthesis on the 3B model.
+
+Architecture is now coherently local-first:
+- Hermes interactive: local llama3.2:1b primary, deepseek-r1:8b reasoning
+  fallback (Hermes's own `fallback_model` config).
+- OS1 daily brief: local llama3.2:3b primary via
+  `scripts/llm-task-with-fallback.sh`, OpenRouter z-ai/glm-4.5-air:free
+  only on 60s timeout / non-zero exit.
+- OS1 hourly business-ops smoke: local qwen2.5-coder:1.5b.
+- Eden voice agent: ElevenLabs Haiku 4.5 (cloud, by design — voice
+  latency demands a managed frontier provider; ~$0.001/turn).
+- Embeddings: local nomic-embed-text (no OpenAI dependency).
+
+`docs/local-model-lanes.md` documents the full mapping (lane -> model,
+who uses what, when OpenRouter fires, how to change lanes, what NOT to
+add and why). This is the source-of-truth for the 9-model Ollama
+inventory and the lane allocation under MAX_LOADED_MODELS=1.
+
+Per the operator's recent research review, the architecture matches the
+recommended local-first stack: Hugging Face free for downloads (HF_TOKEN
+at ~/.huggingface_token), Ollama for runtime, OpenRouter as paid emergency
+fallback only. No Hugging Face Pro purchase needed at this stage.
