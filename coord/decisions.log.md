@@ -234,3 +234,43 @@ can use Composio's `EXA_*` tools through the connected account
 
 API key never written to any tracked file; lives in `~/.hermes/.env`,
 the launchd plist EnvironmentVariables, and Composio's secret store.
+
+## 2026-05-21T12:35Z — CC [PERF FIX]
+"Hardware is too slow for local Ollama" diagnosis was **wrong**. Naked
+Ollama.app defaults were the actual cause of every "extreme slowness"
+report; 8 GB M1 + Metal can run llama3.2:1b at ~0.5 s warm response
+once tuned.
+
+Root cause: Ollama.app's launchd-supervised serve subprocess inherits
+launchctl env, NOT the user's shell. So shell-level OLLAMA_* exports
+never reached it. Defaults left in place:
+- KEEP_ALIVE=5m  → any pause > 5 min triggers a 3-7 s cold load.
+- KV cache F16   → doubles RAM cost vs Q8_0 (and ~halves what fits).
+- flash_attn off → larger memory pressure, slower throughput.
+
+Fix shipped: `scripts/configure-ollama-tunings.sh` sets and persists:
+- OLLAMA_KEEP_ALIVE=-1 (stay loaded)
+- OLLAMA_FLASH_ATTENTION=1 (Metal flash attention)
+- OLLAMA_KV_CACHE_TYPE=q8_0 (halves KV cache RAM)
+- OLLAMA_MAX_LOADED_MODELS=1 (no concurrent thrash on 8 GB)
+- OLLAMA_NUM_PARALLEL=1 (one request at a time)
+Modes: --apply (current session), --persist (installs
+~/Library/LaunchAgents/com.os1.ollama-env.plist for reboot survival),
+--preload MODEL (warms the named model with keep_alive=-1), --status.
+
+Verified live on M1/8 GB after --persist:
+- llama3.2:1b warm: 0.4-0.7 s (was timing out >60 s under default
+  KEEP_ALIVE after idle).
+- qwen2.5-coder:1.5b warm: similar profile.
+- llama3.2:3b warm: ~4 tok/s eval; usable for batch, slow for chat.
+- Ollama log confirms: `flash_attn = enabled`, `K (q8_0)`, `V (q8_0)`,
+  Metal KV buffer 238 MiB (was ~476 MiB under F16).
+
+LaunchAgent `com.os1.ollama-env` runs at user login, sets the five
+env vars before Ollama.app autostarts so the supervisor inherits them.
+Source via `bash scripts/configure-ollama-tunings.sh --status` to see
+what's currently in the serve subprocess.
+
+Sources: Exa-synthesized current best practice for 8 GB Apple Silicon
++ direct llama.cpp log verification. The "switch to cloud" advice was
+defeatist; rejecting it.
