@@ -151,7 +151,10 @@ if [ -z "$NEW_PID" ]; then
 fi
 
 echo "== ollama serve PID=$NEW_PID — verifying env propagation =="
-applied="$(ps -E -p "$NEW_PID" 2>/dev/null | tr ' ' '\n' | grep -E '^OLLAMA_(KEEP_ALIVE|FLASH_ATTENTION|KV_CACHE_TYPE|MAX_LOADED_MODELS|NUM_PARALLEL)=' | sort)"
+# Capture every OS1-managed OLLAMA_* var so the verify loop scales with
+# additions to TUNINGS (regex was hand-listed earlier and silently dropped
+# new keys like OLLAMA_CONTEXT_LENGTH).
+applied="$(ps -E -p "$NEW_PID" 2>/dev/null | tr ' ' '\n' | grep -E '^OLLAMA_(KEEP_ALIVE|FLASH_ATTENTION|KV_CACHE_TYPE|MAX_LOADED_MODELS|NUM_PARALLEL|CONTEXT_LENGTH)=' | sort)"
 echo "$applied"
 missing=0
 for kv in "${TUNINGS[@]}"; do
