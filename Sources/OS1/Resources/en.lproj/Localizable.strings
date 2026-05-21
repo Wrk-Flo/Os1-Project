@@ -1012,3 +1012,8 @@
 "Local provider" = "Local provider";
 "No API key is required. OS1 will register this OpenAI-compatible local endpoint and use it from the selected host." = "No API key is required. OS1 will register this OpenAI-compatible local endpoint and use it from the selected host.";
 "Refreshing local Hermes runtime…" = "Refreshing local Hermes runtime…";
+"1. In Telegram, message @BotFather → /newbot → copy the token. 2. Paste it below; OS1 validates it against api.telegram.org. 3. Add allowed Telegram user IDs, then install to write ~/.hermes/.env and start the gateway." = "1. In Telegram, message @BotFather → /newbot → copy the token. 2. Paste it below; OS1 validates it against api.telegram.org. 3. Add allowed Telegram user IDs, then install to write ~/.hermes/.env and start the gateway.";
+"Allowed users" = "Allowed users";
+"Current Hermes direct-message routing uses TELEGRAM_ALLOWED_USERS. Pairing codes are not required for this runtime." = "Current Hermes direct-message routing uses TELEGRAM_ALLOWED_USERS. Pairing codes are not required for this runtime.";
+"Get yours by messaging @userinfobot in Telegram, or keep the existing host allowlist when refreshing an installed gateway." = "Get yours by messaging @userinfobot in Telegram, or keep the existing host allowlist when refreshing an installed gateway.";
+"Writes TELEGRAM_BOT_TOKEN and allowed user IDs to ~/.hermes/.env on %@, then starts the gateway so the agent picks up Telegram messages right away." = "Writes TELEGRAM_BOT_TOKEN and allowed user IDs to ~/.hermes/.env on %@, then starts the gateway so the agent picks up Telegram messages right away.";
