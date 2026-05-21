@@ -88,12 +88,17 @@ while [ "$#" -gt 0 ]; do
 done
 
 # Canonical tunings — keep this dict in sync with the docstring.
+# OLLAMA_CONTEXT_LENGTH=65536 satisfies Hermes Agent's hard 64K minimum and
+# is large enough for batch jobs that synthesize from web/file context.
+# Cost on M1/8 GB with Q8_0 KV: ~1088 MiB for a 16-layer 1B model, ~3.8 GB
+# for a 28-layer 3B model — only the 1B comfortably fits at this context.
 declare -a TUNINGS=(
   "OLLAMA_KEEP_ALIVE=-1"
   "OLLAMA_FLASH_ATTENTION=1"
   "OLLAMA_KV_CACHE_TYPE=q8_0"
   "OLLAMA_MAX_LOADED_MODELS=1"
   "OLLAMA_NUM_PARALLEL=1"
+  "OLLAMA_CONTEXT_LENGTH=65536"
 )
 
 OLLAMA_HOST="${OLLAMA_HOST:-http://127.0.0.1:11434}"
@@ -178,7 +183,7 @@ if [ "$PERSIST" -eq 1 ]; then
   <array>
     <string>/bin/bash</string>
     <string>-c</string>
-    <string>launchctl setenv OLLAMA_KEEP_ALIVE -1; launchctl setenv OLLAMA_FLASH_ATTENTION 1; launchctl setenv OLLAMA_KV_CACHE_TYPE q8_0; launchctl setenv OLLAMA_MAX_LOADED_MODELS 1; launchctl setenv OLLAMA_NUM_PARALLEL 1</string>
+    <string>launchctl setenv OLLAMA_KEEP_ALIVE -1; launchctl setenv OLLAMA_FLASH_ATTENTION 1; launchctl setenv OLLAMA_KV_CACHE_TYPE q8_0; launchctl setenv OLLAMA_MAX_LOADED_MODELS 1; launchctl setenv OLLAMA_NUM_PARALLEL 1; launchctl setenv OLLAMA_CONTEXT_LENGTH 65536</string>
   </array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><false/>
