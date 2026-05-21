@@ -59,9 +59,13 @@ case "$MODE" in
     <key>EnvironmentVariables</key>
     <dict>
       <key>PATH</key><string>${HOME}/.local/bin:${HOME}/.composio:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
-      <key>OS1_LLM_TASK_BIN</key><string>${SCRIPT_DIR}/llm-task-openrouter.sh</string>
+      <key>OS1_OSA_TIMEOUT_SECONDS</key>
+		<string>60</string>
+		<key>OS1_LLM_TASK_BIN</key><string>${SCRIPT_DIR}/llm-task-with-fallback.sh</string>
       <key>OPENROUTER_MODEL</key><string>z-ai/glm-4.5-air:free</string>
+      <key>OLLAMA_MODEL</key><string>llama3.2:3b</string>
       <key>OLLAMA_TASK_MAX_TIME_SECONDS</key><string>180</string>
+      <key>OS1_FALLBACK_PRIMARY_TIMEOUT</key><string>120</string>
     </dict>
   </dict>
 </plist>

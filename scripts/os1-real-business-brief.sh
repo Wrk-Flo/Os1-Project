@@ -300,6 +300,14 @@ else
   printf 'WARN: composio CLI missing at %s\n' "$COMPOSIO_BIN" > "$gmail_md"
 fi
 
+# Ensure Calendar.app and Reminders.app are running before osascript queries
+# them. Under launchd, neither app is launched on demand; the osascript call
+# returns `-600 Application isn't running` for Calendar and the iteration of
+# `whose completed is false` for Reminders is much slower against a cold UI
+# process. -j keeps them background-launched (no foreground steal).
+/usr/bin/open -a Calendar -j 2>/dev/null || true
+/usr/bin/open -a Reminders -j 2>/dev/null || true
+
 # ---- 3. calendar -------------------------------------------------------------
 cal_file="$data_dir/calendar-today.txt"
 osa_cal='
