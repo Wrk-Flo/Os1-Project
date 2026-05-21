@@ -14,6 +14,7 @@
 | `ca_9IfVCfV7xpXI` | linkedin | ACTIVE | `ac_x3w4YQNRuuOL` (composio-managed) | Verified — Moses Tut, LinkedIn id `7rSk6RLTL-`. Refresh expires ~60d. |
 | `ca_wn5lq8W8tCMf` | gmail | ACTIVE | `ac_Ocx2kcAvL0pU` (composio-managed) | Verified — labels readable. Scopes include full Gmail + profile. |
 | `ca_45KWg-Typfl1` | twitter | **FAILED** | `ac_HwJToG2Q4jq1` (WrkFlo Twitter v2) | **UPSTREAM-BLOCKED — "OAuth callback failed during token exchange". Root cause is composio's own callback host (Cloudflare 1016). Not user-actionable. Re-verified 2026-05-19. See below.** |
+| `ca_gY5js-efve_X` | exa | ACTIVE | `ac_leOyjgYk3u27` (custom, API_KEY) | Verified 2026-05-21 — `EXA_ANSWER` + `EXA_SEARCH` returning live results. Primary AI search backend for OS1. Also wired in Hermes via `EXA_API_KEY` env for the direct-API path (`web.backend: exa` in `~/.hermes/config.yaml`). 18 EXA_* tools available; key tools are `EXA_ANSWER` (synthesized answer + citations), `EXA_SEARCH`, `EXA_GET_CONTENTS_ACTION`, `EXA_FIND_SIMILAR`. |
 
 ### Deleted during this audit (2026-05-18)
 - `ca_alg-wkCtUtdf` (twitter, EXPIRED) — refresh token permanently failed

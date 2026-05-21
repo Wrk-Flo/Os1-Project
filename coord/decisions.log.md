@@ -203,3 +203,34 @@ First live `os1-post-approved-content.sh --apply` to LinkedIn fired.
   "could not resolve person URN"; second --apply (after the stderr-sidecar
   fix) succeeded.
 - Operator explicitly authorized the post.
+
+## 2026-05-21T12:25Z — CC
+Exa wired as the primary AI search backend across the stack.
+
+Composio side (for OS1 scripts / MCP):
+- Created auth_config `ac_leOyjgYk3u27` (toolkit=exa, scheme=API_KEY).
+- Created connected_account `ca_gY5js-efve_X` (ACTIVE) with the operator's
+  Exa API key stored in Composio's secret slot. Verified via
+  `composio execute EXA_ANSWER` — returned synthesized answer + citations.
+- 18 Exa tools now available through Composio (EXA_SEARCH,
+  EXA_GET_CONTENTS_ACTION, EXA_ANSWER, EXA_FIND_SIMILAR, EXA_CREATE_RESEARCH,
+  EXA_GET_RESEARCH, EXA_LIST_RESEARCH, etc.).
+
+Hermes side (interactive web tool, direct API):
+- `EXA_API_KEY` added to `~/.hermes/.env` (mode 600) and the
+  `ai.hermes.gateway` launchd plist EnvironmentVariables.
+- `~/.hermes/config.yaml` flipped: `web.backend`, `web.search_backend`,
+  `web.extract_backend` all set to `exa` (replacing previous `composio`
+  /`ddgs`). Hermes auto-detects via EXA_API_KEY env per
+  `tools/web_tools.py:155`.
+- Gateway reloaded; subprocess env confirms EXA_API_KEY present.
+- Direct probe to `api.exa.ai/answer` returned a real synthesized answer
+  with 5 citations in 2.4 s.
+
+Why two paths: Hermes interactive uses the direct Exa API (lowest
+latency, no Composio hop). OS1 scripts and any future MCP tool routing
+can use Composio's `EXA_*` tools through the connected account
+(consistent auth, audit, rate-limit handling).
+
+API key never written to any tracked file; lives in `~/.hermes/.env`,
+the launchd plist EnvironmentVariables, and Composio's secret store.
