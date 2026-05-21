@@ -185,3 +185,21 @@ readiness remained OK, but direct OpenClaw validation/probe passed and direct
 Composio status returned degraded rc 0. After one watchdog kick, launchd last
 exit code returned to 0 and the 21:30Z ledger line is back to Hermes up,
 OpenClaw up, Composio degraded rc 0, Twitter FAILED, readiness OK.
+
+## 2026-05-21T12:10Z — CC [BAR-1 UNLOCKED]
+First live `os1-post-approved-content.sh --apply` to LinkedIn fired.
+- Channel: linkedin (Composio ca_9IfVCfV7xpXI ACTIVE).
+- Visibility: CONNECTIONS.
+- Title: "OS1 — first real local-first ops cycle".
+- body_chars: 1008.
+- Artifact: ~/Library/Application Support/OS1/posts/runs/20260521T121040Z/.
+- result: ok, FAILED=none. Response body empty (LinkedIn returns URN in
+  x-restli-id header, not body) so response_id captured as "unknown" — post
+  itself went live. `w_member_social` scope is write-only so we cannot
+  read it back via the same token; operator visual-confirms on LinkedIn.
+- Pre-flight bug fixed: `composio_proxy_call` merged stderr into stdout,
+  letting the CLI's "Update available" banner corrupt the JSON jq parsed
+  for the userinfo /v2/userinfo person URN. First --apply failed with
+  "could not resolve person URN"; second --apply (after the stderr-sidecar
+  fix) succeeded.
+- Operator explicitly authorized the post.

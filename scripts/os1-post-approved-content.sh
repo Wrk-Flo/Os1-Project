@@ -219,18 +219,23 @@ last_http_code() { cat "$TMP_DIR/api_code.$$" 2>/dev/null || echo ""; }
 composio_proxy_call() {
   local toolkit="$1" method="$2" url="$3" data_file="$4"
   local out="$TMP_DIR/proxy_out.$$"
+  local err="$TMP_DIR/proxy_err.$$"
   set +e
+  # Keep stderr in a sidecar so the composio CLI's "Update available" /
+  # ANSI banners don't contaminate the JSON body that jq parses.
   if [ -n "$data_file" ]; then
     "$COMPOSIO_BIN" proxy "$url" --toolkit "$toolkit" -X "$method" \
       -H "content-type: application/json" \
-      -d "@$data_file" </dev/null >"$out" 2>&1
+      -d "@$data_file" </dev/null >"$out" 2>"$err"
   else
-    "$COMPOSIO_BIN" proxy "$url" --toolkit "$toolkit" -X "$method" </dev/null >"$out" 2>&1
+    "$COMPOSIO_BIN" proxy "$url" --toolkit "$toolkit" -X "$method" </dev/null >"$out" 2>"$err"
   fi
   local rc=$?
   set -e
   printf '%d' "$rc" >"$TMP_DIR/proxy_rc.$$"
-  cat "$out"
+  # Defense-in-depth: if a future CLI version writes non-JSON preamble to
+  # stdout, strip everything before the first '{' or '['.
+  awk 'BEGIN{found=0} /^[{[]/{found=1} found{print}' "$out"
 }
 
 last_proxy_rc() { cat "$TMP_DIR/proxy_rc.$$" 2>/dev/null || echo "1"; }
