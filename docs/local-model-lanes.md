@@ -4,9 +4,7 @@ This document maps what each local model is for, when it loads, and how OS1
 scripts + Eden Shell + Hermes share the single Ollama instance on this 8 GB
 M1 MacBook Air.
 
-The architecture is **local-first by default, OpenRouter only as a fallback
-when the local leg fails or times out**. Azure is paused. There is no
-"cloud primary" lane right now.
+The architecture is **local-first by default for batch/background tasks, but OpenRouter-primary for interactive chat (Hermes) and coding (Codex)**. Azure is paused.
 
 ## Hardware constraint
 
@@ -23,64 +21,78 @@ These knobs are set by `scripts/configure-ollama-tunings.sh` and persisted
 via `~/Library/LaunchAgents/com.os1.ollama-env.plist` (RunAtLoad on login).
 
 Because `MAX_LOADED_MODELS=1`, switching models has a cost: ~3-7 s cold load
-of the new model + the old model is evicted. So the lane design tries to
-**keep one model loaded most of the time**.
+of the new model + the old model is evicted. For interactive use (chat,
+coding), we now route to OpenRouter to bypass the 50-110s warm / 3-6m cold
+latencies seen on this hardware.
 
 ## Models present (verified via `ollama list`, 2026-05-21)
 
 | Model | Size | Role |
 | --- | --- | --- |
-| `llama3.2:1b` | 1.3 GB | Hermes default (fast chat, tool routing, small context turns) |
+| `llama3.2:1b` | 1.3 GB | Fast local chat (legacy default; now a background/memory fallback) |
 | `llama3.2:3b` | 2.0 GB | OS1 daily brief default (synthesis from real Gmail/Cal/Reminders/LinkedIn signal) |
-| `qwen2.5-coder:3b` | 1.9 GB | Backup coding / code-aware classification |
+| `qwen2.5-coder:3b` | 1.9 GB | Backup local coding / code-aware classification |
 | `qwen2.5-coder:1.5b` | 986 MB | Lightest fallback for the smoke-mode business-ops cycle |
 | `qwen3:4b` | 2.5 GB | Optional reasoning batch (impractical for interactive — emits long reasoning traces) |
-| `deepseek-r1:latest` / `deepseek-r1:8b` | 5.2 GB | Reasoning-only lane; not valid for Hermes tool-calling fallback because Ollama rejects tool calls for this model |
+| `deepseek-r1:latest` / `deepseek-r1:8b` | 5.2 GB | Reasoning-only lane; not valid for Hermes tool-calling fallback |
 | `deepseek-coder:6.7b` | 3.8 GB | Heavier coding lane (Eden code automation, OS1 script reasoning) |
 | `nomic-embed-text:latest` | 274 MB | Local embeddings (unlocks RAG/memory without OpenAI embedding cost) |
 | `llama3:8b` | 4.7 GB | Legacy — historical default; do not pick unless explicitly needed |
-| `glm-5:cloud` | — | Cloud stub; only used when the operator explicitly routes to GLM Cloud |
 
 Total installed disk: ~21 GB across model weights. Only one is loaded into
 memory at any time.
+
+## OpenRouter Primary for Interactive Tools (Mid-2026 Update)
+
+To ensure <5s response times for daily-driver tools, we use paid OpenRouter
+lanes as the primary for interactive chat and coding.
+
+| Tier | Model | Cost (in/out per M tok) | Role |
+|---|---|---|---|
+| Cheapest fast | `openai/gpt-4o-mini` | $0.15 / $0.60 | Hermes Primary |
+| Premium fast | `anthropic/claude-haiku-4.5` | ~$1 / ~$5 | Hermes Fallback 1 |
+| Larger reasoning | `anthropic/claude-sonnet-4.5` | ~$3 / ~$15 | Codex Primary |
 
 ## Lane → model mapping
 
 ```
                               ┌──────────────────────┐
-                              │   Ollama (loopback)  │
-                              │  127.0.0.1:11434/v1  │
+                              │  OpenRouter (Cloud)  │
+                              │  Primary Interactive │
                               └──────────┬───────────┘
                                          │
        ┌─────────────────────────────────┼─────────────────────────────────┐
        │                                 │                                 │
 ┌──────┴──────┐                  ┌───────┴──────┐                  ┌───────┴──────┐
-│  fast_lane  │                  │ reason_lane  │                  │  code_lane   │
-│ llama3.2:1b │                  │ deepseek-r1  │                  │ qwen2.5-     │
-│ (Hermes)    │                  │ :latest (8B) │                  │ coder:3b     │
-└─────────────┘                  └──────────────┘                  └──────────────┘
-
-┌─────────────┐                  ┌──────────────┐                  ┌──────────────┐
-│ memory_lane │                  │  brief_lane  │                  │ embed_lane   │
-│ llama3.2:1b │                  │ llama3.2:3b  │                  │ nomic-embed- │
-│ (summaries) │                  │ (OS1 brief)  │                  │ text         │
+│  chat_lane  │                  │  code_lane   │                  │  reason_lane │
+│ gpt-4o-mini │                  │ sonnet-4.5   │                  │  o1-preview  │
+│ (Hermes)    │                  │ (Codex)      │                  │ (Deep Ref)   │
 └─────────────┘                  └──────────────┘                  └──────────────┘
 
                               ┌──────────────────────┐
-                              │ OpenRouter (fallback)│
-                              │ z-ai/glm-4.5-air:free│
-                              └──────────────────────┘
+                              │   Ollama (Local)     │
+                              │  Primary Batch/Fall. │
+                              └──────────┬───────────┘
+                                         │
+       ┌─────────────────────────────────┼─────────────────────────────────┐
+       │                                 │                                 │
+┌──────┴──────┐                  ┌───────┴──────┐                  ┌───────┴──────┐
+│  brief_lane │                  │ memory_lane  │                  │ embed_lane   │
+│ llama3.2:3b │                  │ llama3.2:1b  │                  │ nomic-embed- │
+│ (OS1 brief) │                  │ (Summaries)  │                  │ text         │
+└─────────────┘                  └──────────────┘                  └──────────────┘
 ```
 
 ## Who uses what
 
 | Consumer | Primary model | Falls back to | Wrapper |
 | --- | --- | --- | --- |
-| Hermes Agent (interactive CLI / Telegram / cron) | `llama3.2:1b` | `llama3.2:3b` via Hermes `fallback_model` config | native Hermes provider; fallback must support tools |
-| OS1 daily real-business-brief | `llama3.2:3b` (`OS1_FALLBACK_PRIMARY_MODEL` default) | OpenRouter `z-ai/glm-4.5-air:free` after `OS1_FALLBACK_PRIMARY_TIMEOUT=60s` | `scripts/llm-task-with-fallback.sh` |
-| OS1 hourly business-ops smoke | `qwen2.5-coder:1.5b` (smallest fast model for the canned `daily operations brief` smoke prompt) | same OpenRouter fallback if needed | `scripts/ollama-task.sh` |
-| Eden Shell `callFoundryModel` | `qwen2.5-coder:3b` (Eden's PROJECT_STATE default `OLLAMA_MODEL`) | `llama_cpp` → `openai` per Eden's `EDEN_MODEL_FALLBACK_CHAIN=ollama,llama_cpp,openai,azure` (Azure currently disabled) | Eden backend |
-| Eden voice agent (ElevenLabs Chief of Staff) | **`claude-haiku-4-5` via ElevenLabs** — NOT local. Cloud for voice latency. Local Ollama is reserved for tool-side capability calls only. | `claude-sonnet-4-5` → `gemini-3.1-flash-lite-preview` via ElevenLabs backup cascade | ElevenLabs Conversational AI |
+| Hermes Agent (interactive CLI / Telegram / chat) | **`openai/gpt-4o-mini` (OpenRouter)** | `claude-haiku-4.5` (OR) → `llama3.2:3b` (Local) | native Hermes provider |
+| Codex CLI (coding tasks) | **`claude-sonnet-4.5` (OpenRouter)** | `--profile foundry` (Azure, when up) | `codex --profile openrouter` |
+| OS1 daily real-business-brief | `llama3.2:3b` (Local) | OpenRouter `z-ai/glm-4.5-air:free` | `scripts/llm-task-with-fallback.sh` |
+| OS1 hourly business-ops smoke | `qwen2.5-coder:1.5b` (Local) | same OpenRouter fallback | `scripts/ollama-task.sh` |
+| Eden Shell `callFoundryModel` | `qwen2.5-coder:3b` (Local) | `llama_cpp` → `openai` | Eden backend |
+| Eden voice agent (Chief of Staff) | `claude-haiku-4.5` (ElevenLabs) | `claude-sonnet-4.5` | ElevenLabs |
 
 ### Why the voice agent is cloud, not local
 
