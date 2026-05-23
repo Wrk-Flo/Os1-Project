@@ -35,7 +35,7 @@ of the new model + the old model is evicted. So the lane design tries to
 | `qwen2.5-coder:3b` | 1.9 GB | Backup coding / code-aware classification |
 | `qwen2.5-coder:1.5b` | 986 MB | Lightest fallback for the smoke-mode business-ops cycle |
 | `qwen3:4b` | 2.5 GB | Optional reasoning batch (impractical for interactive — emits long reasoning traces) |
-| `deepseek-r1:latest` | 5.2 GB | Reasoning lane (Hermes fallback model; `:latest` tag IS the 8B distill) |
+| `deepseek-r1:latest` / `deepseek-r1:8b` | 5.2 GB | Reasoning-only lane; not valid for Hermes tool-calling fallback because Ollama rejects tool calls for this model |
 | `deepseek-coder:6.7b` | 3.8 GB | Heavier coding lane (Eden code automation, OS1 script reasoning) |
 | `nomic-embed-text:latest` | 274 MB | Local embeddings (unlocks RAG/memory without OpenAI embedding cost) |
 | `llama3:8b` | 4.7 GB | Legacy — historical default; do not pick unless explicitly needed |
@@ -76,7 +76,7 @@ memory at any time.
 
 | Consumer | Primary model | Falls back to | Wrapper |
 | --- | --- | --- | --- |
-| Hermes Agent (interactive CLI / Telegram / cron) | `llama3.2:1b` | `deepseek-r1:8b` if reasoning needed (per Hermes `fallback_model` config) | native Hermes provider |
+| Hermes Agent (interactive CLI / Telegram / cron) | `llama3.2:1b` | `llama3.2:3b` via Hermes `fallback_model` config | native Hermes provider; fallback must support tools |
 | OS1 daily real-business-brief | `llama3.2:3b` (`OS1_FALLBACK_PRIMARY_MODEL` default) | OpenRouter `z-ai/glm-4.5-air:free` after `OS1_FALLBACK_PRIMARY_TIMEOUT=60s` | `scripts/llm-task-with-fallback.sh` |
 | OS1 hourly business-ops smoke | `qwen2.5-coder:1.5b` (smallest fast model for the canned `daily operations brief` smoke prompt) | same OpenRouter fallback if needed | `scripts/ollama-task.sh` |
 | Eden Shell `callFoundryModel` | `qwen2.5-coder:3b` (Eden's PROJECT_STATE default `OLLAMA_MODEL`) | `llama_cpp` → `openai` per Eden's `EDEN_MODEL_FALLBACK_CHAIN=ollama,llama_cpp,openai,azure` (Azure currently disabled) | Eden backend |
@@ -118,6 +118,10 @@ The wrapper logs to stderr which leg ran when `OS1_LLM_DEBUG=1`.
   `EnvironmentVariables`, then `launchctl bootout` + `launchctl bootstrap`.
 - **Switch Hermes default**: edit `model.default` in `~/.hermes/config.yaml`
   and `launchctl kickstart -k gui/$(id -u)/ai.hermes.gateway`.
+- **Switch Hermes fallback**: edit `fallback_model` in
+  `~/.hermes/config.yaml`; use a tool-capable model such as `llama3.2:3b`.
+  Do not use `deepseek-r1:*` as Hermes primary/fallback while Hermes tools are
+  enabled, because Ollama returns HTTP 400 for tool calls on that family.
 - **Switch Eden's `callFoundryModel` default**: set `OLLAMA_MODEL` in
   `~/Library/LaunchAgents/biz.wrkflo.eden-os-voice-shell.plist`
   `EnvironmentVariables`, then `npm run install:launchd` from the Eden
