@@ -289,8 +289,10 @@ Brief run `20260521T192319Z`:
   synthesis on the 3B model.
 
 Architecture is now coherently local-first:
-- Hermes interactive: local llama3.2:1b primary, deepseek-r1:8b reasoning
-  fallback (Hermes's own `fallback_model` config).
+- Hermes interactive: local llama3.2:1b primary, llama3.2:3b tool-capable
+  fallback (Hermes's own `fallback_model` config). deepseek-r1:8b remains
+  pulled for manual reasoning-only use, but is not valid as Hermes fallback
+  while tools are enabled because Ollama rejects tool calls for R1.
 - OS1 daily brief: local llama3.2:3b primary via
   `scripts/llm-task-with-fallback.sh`, OpenRouter z-ai/glm-4.5-air:free
   only on 60s timeout / non-zero exit.

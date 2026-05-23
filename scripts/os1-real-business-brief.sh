@@ -41,14 +41,13 @@ LOCK_STALE_SECONDS="${OS1_BUSINESS_BRIEF_LOCK_STALE_SECONDS:-1800}"
 COMPOSIO_BIN="${COMPOSIO_BIN:-$HOME/.composio/composio}"
 PROBE_BIN="$SCRIPT_DIR/os1-integration-probe.sh"
 
-# Auto-pick the LLM backend: prefer OpenRouter (fast, tool-capable, cloud
-# free-tier glm-4.5-air:free) when an API key is available; fall back to the
-# local Ollama wrapper otherwise. Override either via OS1_LLM_TASK_BIN /
-# OLLAMA_MODEL / OPENROUTER_MODEL env vars.
+# Auto-pick the LLM backend: prefer the Ollama-first fallback wrapper. It tries
+# local Ollama first and only calls OpenRouter when the local leg fails or times
+# out. Override via OS1_LLM_TASK_BIN / OLLAMA_MODEL / OPENROUTER_MODEL env vars.
 if [ -n "${OS1_LLM_TASK_BIN:-}" ]; then
   OLLAMA_BIN="$OS1_LLM_TASK_BIN"
-elif [ -n "${OPENROUTER_API_KEY:-}" ] || [ -r "$HOME/.openrouter-key" ]; then
-  OLLAMA_BIN="$SCRIPT_DIR/llm-task-openrouter.sh"
+elif [ -x "$SCRIPT_DIR/llm-task-with-fallback.sh" ]; then
+  OLLAMA_BIN="$SCRIPT_DIR/llm-task-with-fallback.sh"
 else
   OLLAMA_BIN="$SCRIPT_DIR/ollama-task.sh"
 fi
@@ -56,12 +55,15 @@ fi
 # Pick a sensible default model for the chosen backend. Caller can still
 # override via --model or the OLLAMA_MODEL env var.
 case "$OLLAMA_BIN" in
+  *llm-task-with-fallback.sh)
+    MODEL="${OLLAMA_MODEL:-${OS1_FALLBACK_PRIMARY_MODEL:-llama3.2:3b}}"
+    ;;
   *llm-task-openrouter.sh)
     MODEL="${OLLAMA_MODEL:-${OPENROUTER_MODEL:-z-ai/glm-4.5-air:free}}"
     ;;
   *)
-    # Local Ollama. qwen2.5-coder:1.5b is small + fast and is already pulled on
-    # this Mac; qwen2.5-coder:3b is heavier and was the prior default.
+    # Direct local Ollama fallback. qwen2.5-coder:1.5b is small + fast and is
+    # already pulled on this Mac.
     MODEL="${OLLAMA_MODEL:-qwen2.5-coder:1.5b}"
     ;;
 esac
@@ -79,7 +81,7 @@ Apple Reminders, and (best-effort) LinkedIn, summarized via local Ollama.
 Options:
   --quick           Default. Gmail last 24h, single brief pass.
   --full            Wider window (7d) and a second pass for Weekly Outlook.
-  --model MODEL     Model override (default: OpenRouter z-ai/glm-4.5-air:free when configured; otherwise local qwen2.5-coder:1.5b).
+  --model MODEL     Model override (default: local llama3.2:3b via the Ollama-first fallback wrapper).
   --output-root DIR Sidecar root (default ~/Library/Application Support/OS1/business-brief).
   --dry-run         Print steps only; no Ollama call, no writes.
   --no-symlink      Skip updating the `latest` symlink.
