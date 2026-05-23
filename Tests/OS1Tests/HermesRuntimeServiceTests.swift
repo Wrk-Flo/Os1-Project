@@ -153,6 +153,56 @@ struct HermesRuntimeServiceTests {
     }
 
     @Test
+    func statusReportsLocalOllamaModelSelectionFromHermesConfig() async throws {
+        let sandbox = try HermesRuntimeTestSandbox()
+        defer { sandbox.remove() }
+
+        let bin = sandbox.root.appendingPathComponent("bin")
+        try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+        _ = try sandbox.writeExecutable(at: bin.appendingPathComponent("hermes"))
+
+        let hermesHome = sandbox.home.appendingPathComponent(".hermes")
+        try FileManager.default.createDirectory(at: hermesHome, withIntermediateDirectories: true)
+        try sandbox.write(
+            """
+            model:
+              api_mode: chat_completions
+              base_url: http://127.0.0.1:11434/v1
+              default: llama3.2:1b
+              provider: ollama-launch
+            fallback_model:
+              provider: ollama-launch
+              model: llama3.2:3b
+            providers:
+              ollama-launch:
+                default_model: llama3.2:3b
+            auxiliary:
+              title_generation:
+                provider: none
+            """,
+            to: hermesHome.appendingPathComponent("config.yaml")
+        )
+
+        let runner = FakeHermesRuntimeProcessRunner(results: [
+            .success(HermesRuntimeProcessResult(stdout: "Hermes Agent v1.0.0", stderr: "", exitCode: 0))
+        ])
+        let service = HermesRuntimeService(
+            processRunner: runner,
+            environment: ["PATH": bin.path, "HOME": sandbox.home.path],
+            homeDirectory: sandbox.home,
+            candidateExecutablePaths: [],
+            localModelServers: [],
+            localModelProbe: FakeHermesLocalModelProbe()
+        )
+
+        let status = await service.status(includeLocalModelServers: false)
+
+        #expect(status.model?.provider == "ollama-launch")
+        #expect(status.model?.defaultModel == "llama3.2:1b")
+        #expect(status.model?.baseURL == "http://127.0.0.1:11434/v1")
+    }
+
+    @Test
     func environmentHermesHomeOverridesDefaultAndExpandsTilde() async throws {
         let sandbox = try HermesRuntimeTestSandbox()
         defer { sandbox.remove() }
