@@ -320,10 +320,18 @@ try
     set tomorrow_start to today_start + (1 * days)
     repeat with c in calendars
       try
-        set evs to (every event of c whose start date is greater than or equal to today_start and start date is less than tomorrow_start)
-        repeat with e in evs
-          set out to out & (summary of e) & " | " & (start date of e as string) & " - " & (end date of e as string) & " [" & (title of c) & "]" & linefeed
-        end repeat
+        with timeout of 6 seconds
+          set cal_title to title of c
+          set evs to (every event of c whose start date is greater than or equal to today_start and start date is less than tomorrow_start)
+          if (count of evs) > 0 then
+            set ev_summaries to summary of evs
+            set ev_starts to start date of evs
+            set ev_ends to end date of evs
+            repeat with i from 1 to count of evs
+              set out to out & (item i of ev_summaries) & " | " & ((item i of ev_starts) as string) & " - " & ((item i of ev_ends) as string) & " [" & cal_title & "]" & linefeed
+            end repeat
+          end if
+        end timeout
       end try
     end repeat
   end tell
@@ -350,10 +358,14 @@ try
   tell application "Reminders"
     repeat with L in lists
       try
-        set rs to (every reminder of L whose completed is false)
-        repeat with r in rs
-          set out to out & (name of r) & " [" & (name of L) & "]" & linefeed
-        end repeat
+        with timeout of 8 seconds
+          set list_name to name of L
+          -- Bulk-fetch names in one AppleEvent rather than iterating per-reminder
+          set incomplete_names to name of (reminders of L whose completed is false)
+          repeat with n in incomplete_names
+            set out to out & (n as string) & " [" & list_name & "]" & linefeed
+          end repeat
+        end timeout
       end try
     end repeat
   end tell
