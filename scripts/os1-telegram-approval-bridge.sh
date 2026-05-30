@@ -109,6 +109,7 @@ BOT_TOKEN="$(jq -r ".channels.telegram.accounts[\"$OS1_TG_BOT_ACCOUNT\"].botToke
 mkdir -p "$STATE_DIR" || die "cannot create state dir $STATE_DIR"
 SEEN_FILE="$STATE_DIR/seen.json"
 OFFSET_FILE="$STATE_DIR/tg-offset"
+EDITING_FILE="$STATE_DIR/editing.json"
 [ -f "$SEEN_FILE" ] || echo '{}' > "$SEEN_FILE"
 [ -f "$OFFSET_FILE" ] || echo '0' > "$OFFSET_FILE"
 
@@ -220,18 +221,61 @@ process_replies() {
       i=$((i+1)); continue
     fi
 
-    # Match approve / cancel patterns; allow optional trailing id substring
+    # Check if we're in an active edit session waiting for field:value input
+    if [ -f "$EDITING_FILE" ]; then
+      local edit_id; edit_id="$(jq -r '.id // empty' "$EDITING_FILE" 2>/dev/null)"
+      if [ -n "$edit_id" ] && echo "$text" | grep -qE '^[a-zA-Z_]+[[:space:]]*:'; then
+        local field; field="$(printf '%s' "$text" | sed -E 's/^([a-zA-Z_]+)[[:space:]]*:.*/\1/' | tr '[:upper:]' '[:lower:]')"
+        local value; value="$(printf '%s' "$text" | sed -E 's/^[a-zA-Z_]+[[:space:]]*:[[:space:]]*//')"
+        log "EDIT action $edit_id: setting $field=$value"
+        local curr; curr="$(eden_get "/api/actions?limit=50" || true)"
+        local action_rec; action_rec="$(echo "$curr" | jq -c --arg id "$edit_id" '.actions[] | select(.id==$id)' 2>/dev/null)"
+        if [ -z "$action_rec" ]; then
+          tg_send_text "$OS1_TG_OPERATOR_CHAT_ID" "Action \`${edit_id: -8}\` not found. Edit cancelled."
+          rm -f "$EDITING_FILE"
+          i=$((i+1)); continue
+        fi
+        local cancel_body; cancel_body="$(jq -nc --arg id "$edit_id" '{id:$id}')"
+        eden_post /api/actions/cancel "$cancel_body" >/dev/null 2>&1
+        local action_type; action_type="$(echo "$action_rec" | jq -r '.action // .type // .actionType // ""')"
+        local old_payload; old_payload="$(echo "$action_rec" | jq -c '.payload // .params // {}' 2>/dev/null)"
+        local new_payload; new_payload="$(echo "$old_payload" | jq -c --arg f "$field" --arg v "$value" '.[$f] = $v')"
+        local propose_body; propose_body="$(jq -nc --arg a "$action_type" --argjson p "$new_payload" '{action:$a, executeNow:false} + $p')"
+        local rsp; rsp="$(eden_post /api/actions/propose "$propose_body")"
+        local ok; ok="$(echo "$rsp" | jq -r '.ok // false')"
+        if [ "$ok" = "true" ]; then
+          local new_id; new_id="$(echo "$rsp" | jq -r '.id // .actionId // "?"')"
+          tg_send_text "$OS1_TG_OPERATOR_CHAT_ID" "$(printf 'Edited *%s* → `%s`\nNew action queued: `%s`\nReply *approve* to execute or *cancel* to dismiss.' "$field" "$value" "${new_id: -8}")"
+          seen_add "$new_id"
+        else
+          local err; err="$(echo "$rsp" | jq -r '.error // .message // "unknown"')"
+          tg_send_text "$OS1_TG_OPERATOR_CHAT_ID" "Re-queue failed: $err. Original action was cancelled."
+        fi
+        rm -f "$EDITING_FILE"
+        i=$((i+1)); continue
+      elif [ -n "$edit_id" ]; then
+        tg_send_text "$OS1_TG_OPERATOR_CHAT_ID" "Expected format: *field*: *new value* (e.g. \`subject: Updated meeting\`). Reply *cancel* to abort edit."
+        if [ "$lower" = "cancel" ] || [ "$lower" = "stop" ] || [ "$lower" = "nevermind" ]; then
+          rm -f "$EDITING_FILE"
+          tg_send_text "$OS1_TG_OPERATOR_CHAT_ID" "Edit cancelled."
+        fi
+        i=$((i+1)); continue
+      fi
+    fi
+
+    # Match approve / cancel / edit patterns; allow optional trailing id substring
     local cmd=""
     local id_hint=""
     case "$lower" in
       approve*|yes*|"send it"*|approved*) cmd="approve"; id_hint="$(printf '%s' "$lower" | sed -E 's/^(approve|yes|approved|send it)[[:space:]]*//')" ;;
       cancel*|no|"don't send it"*|stop|"never mind"*) cmd="cancel"; id_hint="$(printf '%s' "$lower" | sed -E 's/^(cancel|no|don.t send it|stop|never mind)[[:space:]]*//')" ;;
+      edit*|change*|modify*) cmd="edit"; id_hint="$(printf '%s' "$lower" | sed -E 's/^(edit|change|modify)[[:space:]]*//')" ;;
       *) cmd="" ;;
     esac
 
     if [ -z "$cmd" ]; then
       log "no command match for operator message: $text"
-      tg_send_text "$OS1_TG_OPERATOR_CHAT_ID" "Didn't understand. Reply *approve* or *cancel* (optionally with last 8 chars of action id)."
+      tg_send_text "$OS1_TG_OPERATOR_CHAT_ID" "Didn't understand. Reply *approve*, *cancel*, or *edit* (optionally with last 8 chars of action id)."
       i=$((i+1)); continue
     fi
 
@@ -272,6 +316,10 @@ process_replies() {
         local err; err="$(echo "$rsp" | jq -r '.error // .message // "unknown_error"')"
         tg_send_text "$OS1_TG_OPERATOR_CHAT_ID" "Cancel failed: $err"
       fi
+    elif [ "$cmd" = "edit" ]; then
+      log "OPERATOR EDITING action $target_id"
+      jq -nc --arg id "$target_id" '{id:$id}' > "$EDITING_FILE"
+      tg_send_text "$OS1_TG_OPERATOR_CHAT_ID" "$(printf 'Editing action \`%s\`.\nReply with the field to change:\n`subject: New subject line`\n`body: Updated message`\n`recipient_email: new@email.com`\n\nOr reply *cancel* to abort.' "${target_id: -8}")"
     fi
     i=$((i+1))
   done
