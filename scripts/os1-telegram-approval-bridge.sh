@@ -3,7 +3,7 @@
 #
 # Long-running daemon that bridges Eden's action queue
 # (http://127.0.0.1:5188/api/actions) and the operator's Telegram via the
-# OpenClaw mo2darkbot account. The operator can approve / cancel pending
+# configured Telegram bot account. The operator can approve / cancel pending
 # Eden business actions from their phone.
 #
 # Flow:
@@ -79,7 +79,7 @@ Environment overrides:
   EDEN_BASE_URL              default http://127.0.0.1:5188
   OS1_TG_POLL_SECONDS        default 30
   OS1_TG_OPENCLAW_JSON       default ~/.openclaw/openclaw.json
-  OS1_TG_BOT_ACCOUNT         default mo2darkbot
+  OS1_TG_BOT_ACCOUNT         default mo2drkbot
   OS1_TG_OPERATOR_CHAT_ID    default 7091381625
   OS1_TG_STATE_DIR           default ~/Library/Application Support/OS1/telegram-approval
 USAGE
@@ -114,7 +114,7 @@ EDITING_FILE="$STATE_DIR/editing.json"
 [ -f "$OFFSET_FILE" ] || echo '0' > "$OFFSET_FILE"
 
 log "starting (apply=$APPLY oneshot=$ONESHOT poll=${OS1_TG_POLL_SECONDS}s eden=$EDEN_BASE_URL bot=$OS1_TG_BOT_ACCOUNT chat=$OS1_TG_OPERATOR_CHAT_ID)"
-log "state dir: $STATE_DIR  bot token prefix: ${BOT_TOKEN:0:10}..."
+log "state dir: $STATE_DIR  bot token: set"
 
 # ---- helpers ----------------------------------------------------------------
 
