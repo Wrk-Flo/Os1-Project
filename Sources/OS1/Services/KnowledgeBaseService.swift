@@ -177,18 +177,49 @@ final class KnowledgeBaseService: @unchecked Sendable {
         """
 
         try:
+            import datetime
+
             home = resolved_hermes_home()
             kb_root = home / "knowledge"
             manifest_path = kb_root / ".knowledge.json"
             skill_path = home / "skills" / "knowledge-base" / "SKILL.md"
 
-            vault = None
+            manifest = None
             if manifest_path.is_file():
                 try:
                     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
                 except Exception:
                     manifest = {}
 
+            # Older OS1/Hermes installs populated `$HERMES_HOME/knowledge`
+            # directly without OS1's `.knowledge.json` manifest. Treat a
+            # non-empty knowledge folder as a mounted vault instead of showing
+            # "No knowledge base yet" in the UI.
+            if manifest is None and kb_root.is_dir():
+                files = [
+                    path for path in kb_root.rglob("*")
+                    if path.is_file() and path.name not in {".DS_Store", ".knowledge.json"}
+                ]
+                if files:
+                    total_bytes = 0
+                    latest_mtime = 0.0
+                    for path in files:
+                        try:
+                            stat = path.stat()
+                            total_bytes += stat.st_size
+                            latest_mtime = max(latest_mtime, stat.st_mtime)
+                        except OSError:
+                            pass
+                    manifest = {
+                        "name": "Hermes Knowledge Base",
+                        "source": tilde(kb_root),
+                        "last_synced_at": datetime.datetime.utcfromtimestamp(latest_mtime).replace(microsecond=0).isoformat() + "Z" if latest_mtime else None,
+                        "file_count": len(files),
+                        "total_bytes": total_bytes,
+                    }
+
+            vault = None
+            if manifest is not None:
                 vault = {
                     "id": manifest.get("name") or "knowledge",
                     "manifest": {

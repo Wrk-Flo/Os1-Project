@@ -179,9 +179,21 @@ enum ProviderCatalog {
             envVar: "ZAI_API_KEY",
             baseURL: URL(string: "https://api.z.ai/api/paas/v4")!,
             kind: .builtin(typeKey: "zai"),
-            // Z.AI has /paas/v4/models per docs; we hit it relative to
-            // the base URL so the path is "/models" (the suffix appends
-            // to baseURL.path).
+            validation: .modelsEndpoint(path: "/models"),
+            supportsOAuth: false,
+            requiresAPIKey: true
+        ),
+        ProviderCatalogEntry(
+            slug: "github-models",
+            displayName: "GitHub Models",
+            tagline: "Free GPT-4o, DeepSeek-R1, Llama 405B via your GitHub token.",
+            symbolName: "chevron.left.forwardslash.chevron.right",
+            keyPrefixHint: "gho_…",
+            dashboardURL: URL(string: "https://github.com/settings/tokens")!,
+            docsURL: URL(string: "https://docs.github.com/en/github-models"),
+            envVar: "GITHUB_TOKEN",
+            baseURL: URL(string: "https://models.inference.ai.azure.com")!,
+            kind: .customProvider(configName: "github_models"),
             validation: .modelsEndpoint(path: "/models"),
             supportsOAuth: false,
             requiresAPIKey: true
